@@ -16,7 +16,9 @@ import { mergeDocs, emptyDoc, isDoc } from "../public/merge.js";
 const H = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const MAX = 5 * 1024 * 1024;
 const SESSION_TTL = 60 * 60 * 24 * 365;
-const ITER = 100000; // το μέγιστο που επιτρέπει το Workers για PBKDF2
+// Στο δωρεάν πλάνο κάθε αίτημα έχει 10 ms CPU. Οι 40.000 επαναλήψεις θέλουν περίπου 7 ms
+// και χωράνε· οι 100.000 (το μέγιστο του Workers) θέλουν ~18 ms και θα κόβονταν.
+const ITER = 40000;
 
 const json = (body, status = 200) =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: H });
@@ -92,6 +94,10 @@ async function login(request, env) {
   // Υπολογίζουμε hash και όταν δεν υπάρχει ο χρήστης, ώστε ο χρόνος απάντησης να μην το προδίδει
   const h = await hashPassword(password, user ? user.salt : "00".repeat(16), user ? user.iter || ITER : ITER);
   if (!user || !sameHex(h, user.hash)) return fail(401, "Λάθος email ή κωδικός.");
+  if ((user.iter || ITER) !== ITER) { // παλιότερο hash με άλλες επαναλήψεις: το ξαναφτιάχνουμε
+    user.salt = randHex(16); user.hash = await hashPassword(password, user.salt); user.iter = ITER;
+    await env.DATA.put(`user:${email}`, JSON.stringify(user));
+  }
   const token = await newSession(env, user);
   return json({ token, email, uid: user.id });
 }
