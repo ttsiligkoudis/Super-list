@@ -1,0 +1,16 @@
+{
+  // Το "name" πρέπει να είναι ίδιο με το όνομα του Worker στο Cloudflare.
+  "name": "super-list",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  // Το "αρχείο" με τα κοινά δεδομένα. Χωρίς "id", το wrangler (4.45+) δημιουργεί
+  // αυτόματα το KV namespace στο πρώτο deploy και το συνδέει με το Worker.
+  "kv_namespaces": [
+    { "binding": "DATA" }
+  ]
+}

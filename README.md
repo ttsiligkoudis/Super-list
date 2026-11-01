@@ -1,26 +1,22 @@
 # Ψώνια & Μενού
 
-Λίστες σούπερ μάρκετ με πολλά καταστήματα και ιστορικό, μαζί με μηνιαίο πρόγραμμα φαγητού που τυπώνεται σε 3 σχέδια A4 (Στοιχειωμένο, Λιτό, Εποχιακό). Τρέχει στο Cloudflare Pages και δουλεύει και offline. Τα δεδομένα είναι κοινά για όλα τα κινητά.
+Λίστες σούπερ μάρκετ με πολλά καταστήματα και ιστορικό, μαζί με μηνιαίο πρόγραμμα φαγητού που τυπώνεται σε 3 σχέδια A4 (Στοιχειωμένο, Λιτό, Εποχιακό). Τρέχει στο Cloudflare (Workers) και δουλεύει και offline. Τα δεδομένα είναι κοινά για όλα τα κινητά.
 
 ## Πού αποθηκεύονται τα δεδομένα
 
 Όλα τα δεδομένα είναι ένα JSON που αποθηκεύεται σε ένα **Cloudflare KV**, με κλειδί `doc`. Λειτουργεί σαν ένα αρχείο στο cloud, χωρίς βάση δεδομένων να στήσεις. Κάθε κινητό κρατάει αντίγραφο και συγχρονίζεται όταν έχει internet. Αν δύο άτομα αλλάξουν το ίδιο προϊόν, κρατιέται η πιο πρόσφατη αλλαγή.
 
-## Σύνδεση με Cloudflare Pages από το GitHub
+## Σύνδεση με Cloudflare από το GitHub
 
-1. **KV:** Cloudflare dashboard → Storage & Databases → **KV** → Create namespace, με όνομα π.χ. `super-list-data`.
-2. **Pages:** Workers & Pages → Create → Pages → **Connect to Git** → επιλέγεις αυτό το repo.
-   - Framework preset: **None**
-   - Build command: *(κενό)*
-   - Build output directory: **`public`**
-3. Μετά το πρώτο deploy: project → **Settings → Bindings** → Add → **KV namespace**.
-   - Variable name: **`DATA`**
-   - KV namespace: αυτό που έφτιαξες στο βήμα 1
-4. **Deployments** → Retry deployment, ή κάνε ένα νέο push, για να πάρει το binding.
+Το project είναι **Worker με static assets**: τα αρχεία στο `public/` και το `src/worker.js` για το `/api/data`. Όλη η ρύθμιση βρίσκεται στο `wrangler.jsonc`, μαζί με το KV binding `DATA`.
 
-Ο φάκελος `functions/` αναγνωρίζεται αυτόματα και δίνει το `/api/data`. Κάθε push στο `main` κάνει νέο deploy.
+1. Workers & Pages → Create → **Import a repository** → επιλέγεις αυτό το repo.
+2. Build command: κενό. Deploy command: `npx wrangler deploy`, που είναι και η προεπιλογή.
+3. Το όνομα του Worker πρέπει να είναι ίδιο με το `"name"` στο `wrangler.jsonc` (`super-list`).
 
-> Αν το site λέει «Λείπει το KV binding με όνομα DATA», δεν έχει γίνει το βήμα 3 ή δεν έχει γίνει νέο deploy μετά από αυτό.
+Στο πρώτο deploy το wrangler δημιουργεί μόνο του το KV namespace και το συνδέει με το Worker, οπότε δεν χρειάζεται να το φτιάξεις από το dashboard. Κάθε push στο `main` κάνει νέο deploy.
+
+> Αν θέλεις να χρησιμοποιήσεις KV που έχεις ήδη φτιάξει, βάλε το id του στο `wrangler.jsonc`: `{ "binding": "DATA", "id": "..." }`.
 
 ## Στο κινητό
 
@@ -40,7 +36,7 @@ npm install
 npm run dev
 ```
 
-Ανοίγει στο `http://localhost:8788` με ένα τοπικό, ψεύτικο KV.
+Ανοίγει στο `http://localhost:8787` με ένα τοπικό KV.
 
 ## Αρχεία
 
@@ -48,7 +44,8 @@ npm run dev
 - `public/templates.js`: τα σχέδια εκτύπωσης
 - `public/merge.js`: ο κανόνας συγχώνευσης, κοινός για κινητό και server
 - `public/sw.js`, `manifest.webmanifest`, εικονίδια: offline και εγκατάσταση
-- `functions/api/data.js`: το `/api/data` που διαβάζει και γράφει το KV
+- `src/worker.js`: το `/api/data` που διαβάζει και γράφει το KV
+- `wrangler.jsonc`: ρυθμίσεις Worker, static assets και KV
 
 ## Προσοχή
 
