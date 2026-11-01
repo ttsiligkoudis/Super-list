@@ -297,6 +297,37 @@ select.field{appearance:auto}
 .cat-grid input:focus-visible+span{outline:2px solid var(--sea);outline-offset:2px}
 @media (max-width:360px){.cat-grid{grid-template-columns:1fr}}
 
+
+/* signed out */
+body.signed-out .tabs,body.signed-out .composer{display:none!important}
+body.signed-out{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+.auth{max-width:420px;margin:0 auto;padding-block:48px 24px;display:grid;gap:16px}
+.auth-logo{width:72px;height:72px;border-radius:18px}
+.auth h1{font-size:2.2rem;margin:0}
+.auth>p{margin:0}
+.auth form{display:grid;gap:14px}
+.seg.two{grid-template-columns:1fr 1fr}
+.form-err{margin:0;min-height:1.2em;color:var(--danger);font-size:.9rem}
+
+/* store button on each row */
+.store-btn{flex:none;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 6px;border:0;background:none;border-radius:12px;color:var(--ink-2);font-size:.78rem;font-weight:600}
+.store-btn:hover{background:var(--surface-2)}
+.store-btn.none .ic{width:20px;height:20px;opacity:.55}
+.store-btn .logo.m{width:26px;height:26px}
+.none-logo{background:var(--surface-2)!important;color:var(--ink-2)}
+.none-logo .ic{width:18px;height:18px}
+.choice .logo{margin-right:2px}
+
+/* meals: auto plan */
+.gen-btn{margin-top:12px;min-height:44px;font-size:.92rem}
+.gen-btn .ic{color:var(--sea)}
+
+/* account */
+.account{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:12px}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--sea-soft);color:var(--sea);display:grid;place-items:center;flex:none}
+.account .name{font-weight:700;overflow-wrap:anywhere}
+.sheet-text.small{font-size:.88rem}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

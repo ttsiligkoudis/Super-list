@@ -6,9 +6,10 @@ export const DAYS = ["Κυριακή", "Δευτέρα", "Τρίτη", "Τετά
 export const DAYS_SHORT = ["ΚΥΡ", "ΔΕΥ", "ΤΡΙ", "ΤΕΤ", "ΠΕΜ", "ΠΑΡ", "ΣΑΒ"];
 
 export const TEMPLATES = [
-  { id: "haunted", name: "Στοιχειωμένο" },
+  { id: "seasonal", name: "Εποχιακό" },
   { id: "plain", name: "Λιτό" },
-  { id: "seasonal", name: "Εποχιακό" }
+  { id: "haunted", name: "Halloween" },
+  { id: "xmas", name: "Χριστούγεννα" }
 ];
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -39,8 +40,9 @@ const clamp = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:verti
 export function renderSheet(tpl, y, m, meals) {
   const days = daysOf(y, m, meals);
   if (tpl === "plain") return plain(days, y, m);
-  if (tpl === "seasonal") return seasonal(days, y, m);
-  return haunted(days, y, m);
+  if (tpl === "haunted") return haunted(days, y, m);
+  if (tpl === "xmas") return xmas(days, y, m);
+  return seasonal(days, y, m);
 }
 
 /* ---------- Στοιχειωμένο ---------- */
@@ -215,5 +217,76 @@ function seasonal(days, y, m) {
     <div style="display:flex;flex-direction:column;gap:6px;min-height:0">${b.map(row).join("")}</div>
   </main>
   <footer style="flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:12px">${strip}</footer>
+</div>`;
+}
+
+/* ---------- Χριστούγεννα ---------- */
+
+const RED = "#a3182b", GREEN = "#1f5f3f", GOLD = "#c9a227";
+const flake = (x, y, r, rot = 0) => `<g transform="translate(${x} ${y}) rotate(${rot})" stroke="${GREEN}" stroke-width="1.6" stroke-linecap="round" fill="none" opacity=".55">
+  ${[0, 60, 120].map(a => `<g transform="rotate(${a})"><path d="M0 ${-r}V${r}M0 ${-r * .6}l${-r * .25} ${-r * .25}M0 ${-r * .6}l${r * .25} ${-r * .25}M0 ${r * .6}l${-r * .25} ${r * .25}M0 ${r * .6}l${r * .25} ${r * .25}"/></g>`).join("")}</g>`;
+const holly = (x, y, s = 1, rot = 0) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})">
+  <path d="M0 0 C-10 -6 -22 -4 -30 -14 C-26 -14 -24 -18 -25 -22 C-19 -19 -16 -22 -14 -27 C-10 -21 -5 -21 -2 -24 C-4 -16 -1 -8 0 0 Z" fill="${GREEN}"/>
+  <path d="M0 0 C10 -6 22 -4 30 -14 C26 -14 24 -18 25 -22 C19 -19 16 -22 14 -27 C10 -21 5 -21 2 -24 C4 -16 1 -8 0 0 Z" fill="${GREEN}"/>
+  <circle cx="-5" cy="2" r="5" fill="${RED}"/><circle cx="5" cy="2" r="5" fill="${RED}"/><circle cx="0" cy="-5" r="5" fill="${RED}"/></g>`;
+const bauble = (x, len, r, color) => `<g><path d="M${x} 0V${len}" stroke="${GOLD}" stroke-width="1.4"/><rect x="${x - 5}" y="${len - 2}" width="10" height="7" rx="1.5" fill="${GOLD}"/>
+  <circle cx="${x}" cy="${len + 5 + r}" r="${r}" fill="${color}"/><path d="M${x - r * .55} ${len + 5 + r * .55} a${r} ${r} 0 0 1 ${r * .5} ${-r * .9}" stroke="#fff" stroke-width="2" fill="none" opacity=".55"/></g>`;
+const tree = `<svg aria-hidden="true" viewBox="0 0 100 120" style="width:118px;height:142px">
+  <path d="M50 8 L74 44 H62 L84 74 H70 L94 106 H6 L30 74 H16 L38 44 H26 Z" fill="${GREEN}"/>
+  <rect x="43" y="106" width="14" height="12" fill="#6b4226"/>
+  <path d="M50 1 l3.2 6.6 7.2 1 -5.2 5 1.3 7.2 -6.5 -3.4 -6.5 3.4 1.3 -7.2 -5.2 -5 7.2 -1 z" fill="${GOLD}"/>
+  <path d="M32 58 Q50 66 68 54 M24 88 Q50 98 78 84" stroke="${GOLD}" stroke-width="2" fill="none"/>
+  <circle cx="44" cy="36" r="3.4" fill="${RED}"/><circle cx="58" cy="60" r="3.4" fill="${GOLD}"/><circle cx="38" cy="66" r="3.4" fill="${RED}"/>
+  <circle cx="62" cy="90" r="3.6" fill="${RED}"/><circle cx="30" cy="94" r="3.6" fill="${GOLD}"/><circle cx="50" cy="80" r="3.4" fill="#fff"/></svg>`;
+
+function xmas(days, y, m) {
+  const row = x => x ? `
+    <div style="flex:1;min-height:0;display:flex;border:1.5px solid ${GREEN};border-radius:8px;overflow:hidden;background:#fff">
+      <div style="width:104px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-right:1.5px solid ${GREEN};background:${x.weekend ? "#f6e3e5" : "#fff"}">
+        <div style="font-size:14px;font-weight:600;line-height:1.15;color:${x.weekend ? RED : GREEN}">${x.name}</div>
+        <div style="font-family:'EB Garamond',serif;font-size:16px;font-weight:500;line-height:1.1">${x.date}</div>
+      </div>
+      <div style="flex:1;min-width:0;display:flex;align-items:center;padding:2px 12px">${x.meal
+        ? `<div style="font-family:'EB Garamond',serif;font-size:17px;font-weight:500;line-height:1.1;${clamp}">${esc(x.meal)}</div>`
+        : `<div style="width:100%;align-self:flex-end;margin-bottom:11px;border-bottom:1px dotted #9aa89f"></div>`}</div>
+    </div>` : `<div style="flex:1;min-height:0"></div>`;
+  const [a, b] = columns(days);
+  return `<div class="sheet" style="${SHEET};padding:38px 40px 34px;display:flex;flex-direction:column;gap:14px">
+  <div style="position:absolute;inset:16px;border:2px solid ${RED};border-radius:6px"></div>
+  <div style="position:absolute;inset:22px;border:1px dashed ${GREEN};border-radius:4px"></div>
+  <svg aria-hidden="true" viewBox="0 0 794 1122" style="position:absolute;inset:0;width:794px;height:1122px">
+    ${flake(70, 1060, 14, 10)}${flake(724, 1060, 14, 30)}${flake(118, 1086, 8)}${flake(676, 1086, 8, 20)}
+  </svg>
+  <svg aria-hidden="true" viewBox="0 0 794 120" style="position:absolute;left:0;top:22px;width:794px;height:120px">
+    ${bauble(150, 28, 13, RED)}${bauble(190, 54, 10, GOLD)}${bauble(232, 18, 9, GREEN)}
+    ${bauble(562, 18, 9, GREEN)}${bauble(604, 54, 10, GOLD)}${bauble(644, 28, 13, RED)}
+  </svg>
+  <header style="height:168px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 8px 0;position:relative">
+    <div style="width:150px;display:flex;justify-content:center;padding-top:20px">${tree}</div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding-top:22px">
+      <div style="font-size:13px;font-weight:500;letter-spacing:.32em;color:${RED}">ΤΟ ΓΙΟΡΤΙΝΟ ΜΕΝΟΥ</div>
+      <div style="font-family:'EB Garamond',serif;font-weight:700;font-size:50px;line-height:1.02;color:${GREEN}">Πρόγραμμα Φαγητού</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+        <svg aria-hidden="true" viewBox="-32 -30 64 40" style="width:40px;height:25px">${holly(0, 4)}</svg>
+        <div style="font-family:'EB Garamond',serif;font-style:italic;font-weight:500;font-size:26px">${MONTHS[m - 1]} ${y}</div>
+        <svg aria-hidden="true" viewBox="-32 -30 64 40" style="width:40px;height:25px">${holly(0, 4)}</svg>
+      </div>
+    </div>
+    <div style="width:150px;display:flex;justify-content:center;padding-top:20px;transform:scaleX(-1)">${tree}</div>
+  </header>
+  <div style="display:flex;align-items:center;gap:10px;padding:0 6px;flex-shrink:0">
+    <div style="flex:1;border-top:1px solid ${GREEN}"></div>
+    <svg aria-hidden="true" viewBox="-12 -12 24 24" style="width:16px;height:16px"><path d="M0 -10 l2.6 6.4 6.9 .6 -5.2 4.5 1.6 6.8 -5.9 -3.6 -5.9 3.6 1.6 -6.8 -5.2 -4.5 6.9 -.6z" fill="${GOLD}"/></svg>
+    <div style="flex:1;border-top:1px solid ${GREEN}"></div>
+  </div>
+  <main style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;padding:0 6px;position:relative">
+    <div style="display:flex;flex-direction:column;gap:6px;min-height:0">${a.map(row).join("")}</div>
+    <div style="display:flex;flex-direction:column;gap:6px;min-height:0">${b.map(row).join("")}</div>
+  </main>
+  <footer style="height:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:12px;position:relative">
+    <svg aria-hidden="true" viewBox="-32 -30 64 40" style="width:34px;height:21px">${holly(0, 4, 1, -10)}</svg>
+    <div style="font-family:'EB Garamond',serif;font-style:italic;font-size:18px;color:${RED}">Καλά Χριστούγεννα και καλή όρεξη</div>
+    <svg aria-hidden="true" viewBox="-32 -30 64 40" style="width:34px;height:21px">${holly(0, 4, 1, 10)}</svg>
+  </footer>
 </div>`;
 }

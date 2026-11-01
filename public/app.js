@@ -33,20 +33,6 @@ const GUESS_SRC = {
 };
 const GUESS = Object.entries(GUESS_SRC).flatMap(([c, s]) => s.split("|").map(k => [k, c])).sort((a, b) => b[0].length - a[0].length);
 
-const SEED = {
-  veg: ["Μπανάνες", "Λεμόνια", "Αγγούρι", "Ντοματίνια", "Ρόκα", "Μπρόκολο", "Κουνουπίδι", "Πιπεριές κόκκινες", "Κρεμμύδια"],
-  meat: [["Κιμάς", "2,5 κιλά"], ["Χοιρινό φιλέτο", "1 κιλό"], ["Κοτομπουκιές", "×4"], "Φιλετίνια κοτόπουλο"],
-  deli: ["Φέτα", "Κασέρι", "Κεφαλοτύρι", "Χαλούμι", "La Vache qui rit", "Σαλάμι"],
-  dairy: ["Γάλα", "Γιαούρτια", ["Cottage cheese", "×5"], "Τυρί κρέμα", "Κρέμα γάλακτος", "Τζατζίκι", "Πουτίγκες", "Αυγά Θεόφιλου"],
-  bread: ["Ψωμί του τοστ", "Φρυγανιές Wasa", "Φρυγανιά τριμμένη"],
-  pantry: ["Μακαρόνια spaghetti", "Λιγκουίνι", "Κριθαράκι", "Ρύζι", "Φακές", "Αλεύρι", "Μπέικιν πάουντερ", "Πελτές"],
-  sauce: ["Κέτσαπ χωρίς ζάχαρη", "Μαγιονέζα", "Κανέλα"],
-  sweet: ["Μαύρη σοκολάτα", "Ταχίνι κακάο Όλυμπος"],
-  paper: ["Χαρτί υγείας", "Χαρτί κουζίνας"],
-  clean: ["Απορρυπαντικό πιάτων", "Κάψουλες πλυντηρίου", "Μαλακτικό με βανίλια", "Χλωρίνη", "Παπί μαύρο", "Κεζάπ", "Μπλε νερό", "Σφουγγάρια", "Βετέξ", "Γάντια"],
-  care: ["Κρεμοσάπουνο", "Conditioner", "Μωρομάντηλα"]
-};
-
 // Γνωστές αλυσίδες: το λογότυπο έρχεται από το favicon του site τους, με αρχικό γράμμα αν δεν φορτώσει
 const BRANDS = [
   { id: "lidl", name: "Lidl", domain: "lidl-hellas.gr", color: "#0050aa", alias: ["λιντλ"] },
@@ -61,7 +47,7 @@ const BRAND = Object.fromEntries(BRANDS.map(b => [b.id, b]));
 
 const MONTHS_SHORT = ["Ιαν", "Φεβ", "Μάρ", "Απρ", "Μάι", "Ιούν", "Ιούλ", "Αύγ", "Σεπ", "Οκτ", "Νοέ", "Δεκ"];
 const WEEKDAYS = ["Κυρ", "Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ"];
-const DOC_KEY = "mm-doc", UI_KEY = "mm-ui", DIRTY_KEY = "mm-dirty";
+const UI_KEY = "mm-ui", AUTH_KEY = "mm-auth";
 const API = "/api/data";
 
 const ICONS = {
@@ -73,6 +59,9 @@ const ICONS = {
   print: '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  store: '<path d="M4 10v10h16V10"/><path d="M3 10l2-6h14l2 6c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3z"/>',
+  wand: '<path d="M4 20L15 9"/><path d="M14 4l1 2.5L17.5 7 15 8l-1 2.5L13 8l-2.5-1L13 6z"/><path d="M19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
@@ -119,30 +108,21 @@ function parseQuick(s) {
 }
 const cap = s => s.charAt(0).toLocaleUpperCase("el") + s.slice(1);
 
-function seedDoc() {
-  const T = Date.UTC(2026, 10, 1, 11, 0);
-  const d = emptyDoc();
-  d.stores = [
-    { id: "seed-lidl", name: "Lidl", brand: "lidl", color: "#0050aa", order: 1, u: 1 },
-    { id: "seed-masoutis", name: "Μασούτης", brand: "masoutis", color: "#c8102e", order: 2, u: 1 }
-  ];
-  d.lists = [{ id: "seed-list-1", name: "Ψώνια 1/11", createdAt: T, closedAt: null, u: 1 }];
-  let n = 0;
-  for (const [c] of CATS) for (const x of SEED[c] || []) {
-    const [name, qty] = Array.isArray(x) ? x : [x, ""];
-    n++;
-    d.items.push({ id: "seed-i-" + n, listId: "seed-list-1", name, qty, cat: c, store: "", done: false, order: n, u: 1 });
-  }
-  return d;
-}
-
 /* ---------- state ---------- */
 
-let doc = ls.get(DOC_KEY, null);
-if (!isDoc(doc)) doc = seedDoc();
-let dirty = ls.get(DIRTY_KEY, true);
+// Ο λογαριασμός: { token, email, uid }. Τα δεδομένα κρατιούνται στο κινητό ανά χρήστη.
+let session = ls.get(AUTH_KEY, null);
+const docKey = () => `mm-doc:${session.uid}`, dirtyKey = () => `mm-dirty:${session.uid}`;
+let doc = emptyDoc(), dirty = false;
+function loadLocal() {
+  const d = session ? ls.get(docKey(), null) : null;
+  doc = isDoc(d) ? d : emptyDoc();
+  dirty = session ? ls.get(dirtyKey(), false) : false;
+}
+loadLocal();
+try { localStorage.removeItem("mm-doc"); localStorage.removeItem("mm-dirty"); } catch {}
 const today = new Date();
-let ui = Object.assign({ tab: "list", listId: null, filter: "all", basketOpen: false, template: "haunted",
+let ui = Object.assign({ tab: "list", listId: null, filter: "all", basketOpen: false, template: "seasonal",
   ym: `${today.getFullYear()}-${pad(today.getMonth() + 1)}`, histOpen: null }, ls.get(UI_KEY, {}));
 
 const alive = a => a.filter(x => !x.deleted);
@@ -153,7 +133,7 @@ const closedLists = () => alive(doc.lists).filter(l => l.closedAt).sort((a, b) =
 const itemsOf = id => alive(doc.items).filter(i => i.listId === id).sort((a, b) => (a.order || 0) - (b.order || 0));
 const findById = (kind, id) => doc[kind].find(x => x.id === id);
 
-function persist() { ls.set(DOC_KEY, doc); ls.set(DIRTY_KEY, dirty); }
+function persist() { if (session) { ls.set(docKey(), doc); ls.set(dirtyKey(), dirty); } }
 function saveUi() { ls.set(UI_KEY, ui); }
 function touch(o) { o.u = now(); return o; }
 function changed() { dirty = true; persist(); schedulePush(); render(); }
@@ -186,13 +166,18 @@ function schedulePush(delay = 1200) { clearTimeout(pushTimer); pushTimer = setTi
 
 async function sync() {
   clearTimeout(pushTimer);
+  if (!session) return;
   if (syncing) { schedulePush(800); return; }
   syncing = true; setStatus();
   try {
+    const who = session;
+    const headers = { authorization: `Bearer ${who.token}` };
     const res = dirty
-      ? await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(doc) })
-      : await fetch(API, { cache: "no-store" });
+      ? await fetch(API, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(doc) })
+      : await fetch(API, { cache: "no-store", headers });
+    if (res.status === 401) { endSession("Η σύνδεση έληξε. Συνδέσου ξανά."); return; }
     if (!res.ok) throw new Error("HTTP " + res.status);
+    if (session !== who) return;
     const server = await res.json();
     if (!isDoc(server)) throw new Error("bad doc");
     doc = mergeDocs(server, doc);
@@ -236,13 +221,39 @@ function toast(msg, action) {
 }
 function hideToast() { $("#toast").hidden = true; }
 
+// Το «πίσω» του κινητού κλείνει πρώτα ό,τι είναι ανοιχτό (επιλογή διαδρόμου, φύλλο) και όχι την εφαρμογή.
+const layers = [];
+let ignorePop = 0;
+function pushLayer(name) { layers.push(name); history.pushState({ layer: name }, ""); }
+function dropLayer(name) {
+  const i = layers.lastIndexOf(name);
+  if (i < 0) return;
+  const n = layers.length - i;
+  layers.length = i;
+  ignorePop++;
+  history.go(-n);
+}
+window.addEventListener("popstate", () => {
+  if (ignorePop > 0) { ignorePop--; return; }
+  const top = layers.pop();
+  if (top === "picker") { const p = $("#catPicker"); if (p) { p.dataset.silent = "1"; p.open = false; } }
+  else if (top === "sheet") hideSheet();
+});
+
 let pendingConfirm = null;
 function openSheet(html) {
+  if ($("#sheet").hidden) pushLayer("sheet");
+  else dropLayer("picker");
   $("#sheetPanel").innerHTML = html;
   $("#sheet").hidden = false;
   document.body.style.overflow = "hidden";
 }
 function closeSheet() {
+  dropLayer("sheet");
+  hideSheet();
+}
+function hideSheet() {
+  if ($("#sheet").hidden) return;
   $("#sheet").hidden = true;
   $("#sheetPanel").innerHTML = "";
   document.body.style.overflow = "";
@@ -264,6 +275,13 @@ const view = $("#view");
 let pendingRender = false;
 
 function render() {
+  document.body.classList.toggle("signed-out", !session);
+  if (!session) {
+    view.innerHTML = authView();
+    $("#composer").hidden = true;
+    document.body.classList.remove("with-composer");
+    return;
+  }
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false"));
   const onList = ui.tab === "list";
   if (ui.tab === "history") view.innerHTML = historyView();
@@ -309,7 +327,8 @@ function rowHtml(i, sm, showStore, inBasket) {
       <span class="label"><span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}</span>
         ${inBasket ? `<span class="meta">${esc(CAT[catOf(i)].name)}</span>` : ""}</span>
     </button>
-    ${s && showStore ? `<span class="tag" title="${esc(s.name)}">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>` : ""}
+    ${showStore ? `<button type="button" class="store-btn${s ? "" : " none"}" data-act="pick-store" data-id="${i.id}" aria-label="Κατάστημα για ${esc(i.name)}: ${s ? esc(s.name) : "κανένα"}">
+      ${s ? `${logo(s, "m")}<span class="tag-name">${esc(s.name)}</span>` : ic("store")}</button>` : ""}
     <span class="row-acts">
       <button type="button" class="act" data-act="edit-item" data-id="${i.id}" aria-label="Επεξεργασία: ${esc(i.name)}">${ic("edit")}</button>
       <button type="button" class="act del" data-act="del-item" data-id="${i.id}" aria-label="Διαγραφή: ${esc(i.name)}">${ic("trash")}</button>
@@ -356,7 +375,7 @@ function listView() {
       <button type="button" class="chip" data-act="filter" data-f="none" aria-pressed="${ui.filter === "none"}">Χωρίς κατάστημα</button>
     </div>` : ""}`;
 
-  const showStore = ui.filter === "all";
+  const showStore = st.length > 0;
   let aisles = "";
   for (const [c, name, hue] of CATS) {
     const g = scoped.filter(i => catOf(i) === c);
@@ -444,6 +463,7 @@ function mealsView() {
       <button type="button" class="icon-btn" data-act="month" data-d="1" aria-label="Επόμενος μήνας">${ic("right")}</button>
     </div>
     <p class="sub">${filled ? `${filled} από ${days.length} μέρες έχουν φαγητό` : "Γράψε τι θα φάτε κάθε μέρα. Αποθηκεύεται αυτόματα."}</p>
+    <button type="button" class="btn ghost gen-btn" data-act="gen-sheet">${ic("wand")}Αυτόματο πρόγραμμα</button>
     <div class="weeks">${weeks.map(wk => `<div class="week">${wk.map(d => `
       <div class="day${d.weekend ? " we" : ""}${d.key === todayKey ? " today" : ""}">
         <label for="m-${d.key}"><span class="d display num">${d.d}</span><span class="w">${WEEKDAYS[d.w]}</span></label>
@@ -485,7 +505,8 @@ function storesView() {
   const st = stores();
   const have = new Set(st.map(s => (brandOf(s) || {}).id).filter(Boolean));
   const avail = BRANDS.filter(b => !have.has(b.id));
-  return `<header class="vhead"><h1 class="display">Καταστήματα</h1>${syncBadge()}</header>
+  return `<header class="vhead"><h1 class="display">Ρυθμίσεις</h1>${syncBadge()}</header>
+    <h2 class="sec-title" style="margin-top:8px">Τα καταστήματά σου</h2>
     ${st.length ? `<div class="store-list">${st.map(s => {
       const b = brandOf(s);
       return `<div class="store-row">
@@ -502,7 +523,13 @@ function storesView() {
       <input class="field" id="newStore" name="name" placeholder="π.χ. Φούρνος της γειτονιάς" required maxlength="30" aria-label="Όνομα καταστήματος">
       <button class="btn" type="submit">Προσθήκη</button>
     </form>
-    <p class="hint">Στα δικά σου καταστήματα πάτα τον κύκλο για να αλλάξεις χρώμα.</p>`;
+    <p class="hint">Στα δικά σου καταστήματα πάτα το γράμμα για να αλλάξεις χρώμα.</p>
+    <h2 class="sec-title">Λογαριασμός</h2>
+    <div class="account">
+      <span class="avatar">${ic("user")}</span>
+      <span class="label"><span class="name">${esc(session.email)}</span><span class="meta">Οι λίστες σου συγχρονίζονται σε κάθε συσκευή όπου συνδέεσαι.</span></span>
+    </div>
+    <button type="button" class="btn ghost wide" data-act="logout" style="margin-top:10px">Αποσύνδεση</button>`;
 }
 
 /* ----- sheets ----- */
@@ -561,6 +588,145 @@ function listMenuSheet(l) {
     </div>`;
 }
 
+function storePickSheet(i) {
+  const st = stores();
+  const opt = (id, inner, on) => `<button type="button" class="choice" data-act="set-store" data-id="${i.id}" data-store="${id}">${inner}${on ? ic("check") : ""}</button>`;
+  return `<h2 class="sheet-title">Από πού: ${esc(i.name)}</h2>
+    <div class="choices">
+      ${st.map(s => opt(s.id, `${logo(s, "m")}<span class="label"><span class="name">${esc(s.name)}</span></span>`, s.id === i.store)).join("")}
+      ${opt("", `<span class="logo m none-logo">${ic("store")}</span><span class="label"><span class="name">Χωρίς κατάστημα</span></span>`, !st.some(s => s.id === i.store))}
+    </div>`;
+}
+
+/* ----- αυτόματο πρόγραμμα φαγητού ----- */
+
+// Στατιστικά από τους άλλους μήνες: πόσες φορές φαγώθηκε κάθε φαγητό και ποιες μέρες της εβδομάδας
+function mealStats(y, m) {
+  const prefix = `${y}-${pad(m)}-`;
+  const st = new Map();
+  for (const [k, v] of Object.entries(doc.meals)) {
+    const t = ((v && v.t) || "").trim();
+    if (!t || k.startsWith(prefix)) continue;
+    const [yy, mm, dd] = k.split("-").map(Number);
+    const w = new Date(yy, mm - 1, dd).getDay();
+    const key = norm(t);
+    const s = st.get(key) || { name: t, key, n: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "" };
+    s.n++; s.wd[w]++;
+    if (k > s.last) { s.last = k; s.name = t; }
+    st.set(key, s);
+  }
+  return [...st.values()];
+}
+function weighted(c) {
+  let r = Math.random() * c.reduce((a, x) => a + x.w, 0);
+  for (const x of c) { r -= x.w; if (r <= 0) return x; }
+  return c[c.length - 1];
+}
+// Γεμίζει τις μέρες: προτιμά ό,τι τρώτε συχνά και τη μέρα που το συνηθίζετε,
+// αποφεύγει το ίδιο φαγητό σε λιγότερο από 6 μέρες (χαλαρώνει αν δεν φτάνουν τα φαγητά)
+function buildPlan(y, m, mode) {
+  const st = mealStats(y, m);
+  if (st.length < 4) return null;
+  const days = daysOf(y, m, doc.meals);
+  const placed = [];
+  if (mode === "empty") for (const d of days) if (d.meal.trim()) placed.push({ d: d.d, key: norm(d.meal) });
+  const out = {};
+  for (const d of days) {
+    if (mode === "empty" && d.meal.trim()) continue;
+    let pick = null;
+    for (const gap of [6, 4, 2, 1]) {
+      const cands = st.filter(s => !placed.some(p => p.key === s.key && Math.abs(p.d - d.d) < gap))
+        .map(s => ({ s, w: (s.n + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key).length) }));
+      if (cands.length) { pick = weighted(cands); break; }
+    }
+    if (!pick) continue;
+    out[d.key] = pick.s.name;
+    placed.push({ d: d.d, key: pick.s.key });
+  }
+  return out;
+}
+function genSheet() {
+  const [y, m] = ymParts();
+  const st = mealStats(y, m);
+  const months = new Set(Object.entries(doc.meals).filter(([k, v]) => (v.t || "").trim() && !k.startsWith(`${y}-${pad(m)}-`)).map(([k]) => k.slice(0, 7))).size;
+  if (st.length < 4) {
+    return `<h2 class="sheet-title">Αυτόματο πρόγραμμα</h2>
+      <p class="sheet-text">Για να φτιάξω πρόγραμμα χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}. Γράψε τι τρώτε σε έναν μήνα και ξαναδοκίμασε στον επόμενο.</p>
+      <button type="button" class="btn ghost" data-act="close-sheet">Εντάξει</button>`;
+  }
+  const top = [...st].sort((a, b) => b.n - a.n).slice(0, 5).map(s => s.name);
+  return `<h2 class="sheet-title">Αυτόματο πρόγραμμα: ${MONTHS[m - 1]} ${y}</h2>
+    <p class="sheet-text">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Προτιμώ ό,τι τρώτε πιο συχνά και τη μέρα που το συνηθίζετε, και δεν βάζω το ίδιο φαγητό δύο φορές μέσα σε 6 μέρες.</p>
+    <p class="sheet-text small">Πιο συχνά: ${esc(top.join(", "))}</p>
+    <form data-form="gen-plan">
+      <div class="radios">
+        <label><input type="radio" name="mode" value="empty" checked><span>Μόνο τις κενές μέρες</span></label>
+        <label><input type="radio" name="mode" value="all"><span>Όλο τον μήνα από την αρχή</span></label>
+      </div>
+      <button class="btn" type="submit">${ic("wand")}Δημιουργία</button>
+    </form>`;
+}
+
+/* ----- σύνδεση ----- */
+
+let authMode = "login", authBusy = false;
+function authView() {
+  const reg = authMode === "register";
+  return `<section class="auth">
+    <img class="auth-logo" src="/icon.svg" alt="" width="72" height="72">
+    <h1 class="display">Ψώνια & Μενού</h1>
+    <p class="muted">Οι λίστες, τα καταστήματα και το πρόγραμμα φαγητού σου, σε κάθε συσκευή.</p>
+    <div class="seg two" role="group" aria-label="Λογαριασμός">
+      <button type="button" data-act="auth-mode" data-m="login" aria-pressed="${!reg}">Σύνδεση</button>
+      <button type="button" data-act="auth-mode" data-m="register" aria-pressed="${reg}">Νέος λογαριασμός</button>
+    </div>
+    <form data-form="auth" novalidate>
+      <label class="fld">Email<input class="field" id="authEmail" type="email" name="email" autocomplete="email" inputmode="email" required></label>
+      <label class="fld">Κωδικός<input class="field" id="authPass" type="password" name="password" autocomplete="${reg ? "new-password" : "current-password"}" required minlength="8"></label>
+      ${reg ? `<p class="hint" style="margin:0">Τουλάχιστον 8 χαρακτήρες.</p>` : ""}
+      <p class="form-err" id="authErr" role="alert"></p>
+      <button class="btn wide" type="submit">${reg ? "Δημιουργία λογαριασμού" : "Σύνδεση"}</button>
+    </form>
+  </section>`;
+}
+async function submitAuth(f) {
+  if (authBusy) return;
+  const email = f.email.value.trim(), password = f.password.value;
+  const err = $("#authErr");
+  if (!email || !password) { err.textContent = "Συμπλήρωσε email και κωδικό."; return; }
+  authBusy = true;
+  const btn = f.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/auth/${authMode}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { err.textContent = data.error || "Κάτι πήγε στραβά. Δοκίμασε ξανά."; return; }
+    session = { token: data.token, email: data.email, uid: data.uid };
+    ls.set(AUTH_KEY, session);
+    loadLocal();
+    ui.listId = null; ui.tab = "list"; ui.filter = "all"; saveUi();
+    render();
+    await sync();
+    if (data.claimed) toast("Οι λίστες που υπήρχαν ήδη μεταφέρθηκαν στον λογαριασμό σου");
+  } catch {
+    err.textContent = "Δεν υπάρχει σύνδεση στο internet. Η είσοδος στον λογαριασμό χρειάζεται internet.";
+  } finally {
+    authBusy = false;
+    if (btn.isConnected) btn.disabled = false;
+  }
+}
+function endSession(message) {
+  if (session) { try { localStorage.removeItem(docKey()); localStorage.removeItem(dirtyKey()); } catch {} }
+  session = null;
+  authMode = "login";
+  try { localStorage.removeItem(AUTH_KEY); } catch {}
+  loadLocal();
+  closeSheet();
+  hideToast();
+  render();
+  if (message) { const e = $("#authErr"); if (e) e.textContent = message; }
+}
+
 /* ---------- actions ---------- */
 
 function newList(items = []) {
@@ -607,8 +773,7 @@ const actions = {
   "delete-list": async b => {
     const l = findById("lists", b.dataset.id);
     if (!l) return;
-    closeSheet();
-    const ok = await ask({ title: `Διαγραφή της λίστας «${l.name}»;`, text: "Θα σβηστεί και από τα δύο κινητά, μαζί με τα προϊόντα της.", ok: "Διαγραφή", danger: true });
+    const ok = await ask({ title: `Διαγραφή της λίστας «${l.name}»;`, text: "Θα σβηστεί μαζί με τα προϊόντα της, σε όλες τις συσκευές σου.", ok: "Διαγραφή", danger: true });
     if (!ok) return;
     const its = itemsOf(l.id);
     const snap = [...snapshot("lists", [l]), ...snapshot("items", its)];
@@ -642,6 +807,21 @@ const actions = {
     $("#print-root").innerHTML = renderSheet(ui.template, y, m, doc.meals);
     try { await document.fonts.ready; } catch {}
     window.print();
+  },
+  "pick-store": b => { const i = findById("items", b.dataset.id); if (i) openSheet(storePickSheet(i)); },
+  "set-store": b => {
+    const i = findById("items", b.dataset.id);
+    if (i && i.store !== b.dataset.store) { i.store = b.dataset.store; touch(i); }
+    closeSheet(); changed();
+  },
+  "gen-sheet": () => openSheet(genSheet()),
+  "auth-mode": b => { authMode = b.dataset.m; render(); },
+  "logout": async () => {
+    const ok = await ask({ title: "Αποσύνδεση;", text: dirty ? "Υπάρχουν αλλαγές που δεν έχουν σταλεί ακόμα. Αν αποσυνδεθείς τώρα, θα χαθούν." : "Τα δεδομένα σου μένουν στον λογαριασμό. Θα τα βρεις όταν συνδεθείς ξανά.", ok: "Αποσύνδεση", danger: dirty });
+    if (!ok) return;
+    const t = session.token;
+    fetch("/api/auth/logout", { method: "POST", headers: { authorization: `Bearer ${t}` } }).catch(() => {});
+    endSession();
   },
   "add-brand": b => {
     const br = BRAND[b.dataset.id];
@@ -688,7 +868,14 @@ document.addEventListener("click", e => {
 });
 
 document.addEventListener("toggle", e => {
-  if (e.target.matches && e.target.matches("[data-basket]")) { ui.basketOpen = e.target.open; saveUi(); }
+  const t = e.target;
+  if (!t.matches) return;
+  if (t.matches("[data-basket]")) { ui.basketOpen = t.open; saveUi(); }
+  if (t.id === "catPicker") {
+    if (t.open) pushLayer("picker");
+    else if (t.dataset.silent) delete t.dataset.silent;
+    else dropLayer("picker");
+  }
 }, true);
 
 document.addEventListener("change", e => {
@@ -732,6 +919,22 @@ document.addEventListener("submit", e => {
   const v = Object.fromEntries(new FormData(f).entries());
   const name = (v.name || "").trim();
 
+  if (kind === "auth") { submitAuth(f); return; }
+  if (kind === "gen-plan") {
+    const [y, m] = ymParts();
+    const plan = buildPlan(y, m, v.mode === "all" ? "all" : "empty");
+    closeSheet();
+    const keys = plan ? Object.keys(plan) : [];
+    if (!keys.length) { toast("Δεν υπάρχουν κενές μέρες για συμπλήρωση"); return; }
+    const before = Object.fromEntries(keys.map(k => [k, doc.meals[k] ? doc.meals[k].t || "" : ""]));
+    for (const k of keys) doc.meals[k] = { t: plan[k], u: now() };
+    changed();
+    toast(`Συμπληρώθηκαν ${keys.length} μέρες`, { label: "Αναίρεση", run: () => {
+      for (const k of keys) doc.meals[k] = { t: before[k], u: now() };
+      changed();
+    } });
+    return;
+  }
   if (kind === "quick-add") {
     if (!name || !ui.listId) return;
     const p = parseQuick(name);
