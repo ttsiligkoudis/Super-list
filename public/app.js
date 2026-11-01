@@ -481,18 +481,8 @@ function mealsView() {
       <button type="button" class="icon-btn" data-act="month" data-d="1" aria-label="Επόμενος μήνας">${ic("right")}</button>
     </div>
     <p class="sub">${filled ? `${filled} από ${days.length} μέρες έχουν φαγητό` : "Γράψε τι θα φάτε κάθε μέρα. Αποθηκεύεται αυτόματα."}</p>
-    <button type="button" class="btn ghost gen-btn" data-act="gen-sheet">${ic("wand")}Αυτόματο πρόγραμμα</button>
     ${filled ? `<p class="hint">Σύρε το ${ic("grip")} για να αλλάξεις μέρα σε ένα φαγητό. Πάτα την ημερομηνία για να βάλεις κενή μέρα ή να αφαιρέσεις μία.</p>` : ""}
-    <details class="std" data-std-box ${ui.stdOpen ? "open" : ""}>
-      <summary><span class="label"><span class="name">Σταθερά φαγητά της εβδομάδας</span>
-        <span class="meta">${hasStd() ? esc([1, 2, 3, 4, 5, 6, 0].filter(weekStd).map(w => `${WEEKDAYS[w]}: ${weekStd(w)}`).join(", ")) : "Π.χ. Τετάρτη φακές, Παρασκευή φασολάδα"}</span></span>${ic("down")}</summary>
-      <div class="std-body">
-        ${[1, 2, 3, 4, 5, 6, 0].map(w => `<label class="std-row"><span>${DAYS_FULL[w]}</span>
-          <input class="field" data-std="${w}" value="${esc(weekStd(w))}" placeholder="—" maxlength="120" autocomplete="off" spellcheck="${SPELL}"></label>`).join("")}
-        <p class="hint" style="margin:0">Μπαίνουν πρώτα στο «Αυτόματο πρόγραμμα». Μπορείς και να τα βάλεις τώρα στις κενές μέρες του μήνα.</p>
-        <button type="button" class="btn ghost" data-act="std-apply">Βάλε τα στις κενές μέρες του ${MONTHS_GEN[m - 1]}</button>
-      </div>
-    </details>
+    ${autoCard(y, m)}
     <div class="weeks">${weeks.map(wk => `<div class="week">${wk.map(d => `
       <div class="day${d.weekend ? " we" : ""}${d.key === todayKey ? " today" : ""}" data-day="${d.key}">
         <button type="button" class="day-date" data-act="day-menu" data-key="${d.key}" aria-label="Επιλογές για ${DAYS_FULL[d.w]} ${d.d}"><span class="d display num">${d.d}</span><span class="w">${WEEKDAYS[d.w]}</span></button>
@@ -698,31 +688,37 @@ function buildPlan(y, m, mode) {
   }
   return out;
 }
-function genSheet() {
-  const [y, m] = ymParts();
+// Μία κάρτα για όλο το αυτόματο πρόγραμμα: σταθερά της εβδομάδας + δημιουργία
+function autoCard(y, m) {
   const st = mealStats(y, m);
   const months = new Set(Object.keys(doc.meals).filter(k => isDayKey(k) && mealOf(k) && !k.startsWith(`${y}-${pad(m)}-`)).map(k => k.slice(0, 7))).size;
-  const stdTxt = hasStd() ? `<p class="sheet-text small">Τα σταθερά της εβδομάδας μπαίνουν πρώτα στις μέρες τους.</p>` : "";
-  if (st.length < 4 && !hasStd()) {
-    return `<h2 class="sheet-title">Αυτόματο πρόγραμμα</h2>
-      <p class="sheet-text">Για να φτιάξω πρόγραμμα χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}, ή σταθερά φαγητά της εβδομάδας. Γράψε τι τρώτε σε έναν μήνα και ξαναδοκίμασε στον επόμενο.</p>
-      <button type="button" class="btn ghost" data-act="close-sheet">Εντάξει</button>`;
-  }
+  const stdLine = [1, 2, 3, 4, 5, 6, 0].filter(weekStd).map(w => `${WEEKDAYS[w]}: ${weekStd(w)}`).join(", ");
+  const enough = st.length >= 4;
   const top = [...st].sort((a, b) => b.cooks - a.cooks).slice(0, 5).map(s => s.name);
   const two = st.filter(s => s.twoDay).map(s => s.name);
-  return `<h2 class="sheet-title">Αυτόματο πρόγραμμα: ${MONTHS[m - 1]} ${y}</h2>
-    ${st.length >= 4 ? `<p class="sheet-text">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Προτιμώ ό,τι τρώτε πιο συχνά και τη μέρα που το συνηθίζετε.</p>
-    <p class="sheet-text small">Πιο συχνά: ${esc(top.join(", "))}</p>
-    ${two.length ? `<p class="sheet-text small">Για 2 μέρες στη σειρά: ${esc(two.join(", "))}</p>` : ""}`
-    : `<p class="sheet-text">Δεν υπάρχουν ακόμα αρκετά φαγητά από άλλους μήνες, οπότε θα μπουν μόνο τα σταθερά της εβδομάδας.</p>`}
-    ${stdTxt}
-    <form data-form="gen-plan">
-      <div class="radios">
-        <label><input type="radio" name="mode" value="empty" checked><span>Μόνο τις κενές μέρες</span></label>
-        <label><input type="radio" name="mode" value="all"><span>Όλο τον μήνα από την αρχή</span></label>
-      </div>
-      <button class="btn" type="submit">${ic("wand")}Δημιουργία</button>
-    </form>`;
+  const info = enough
+    ? `<p class="hint" style="margin:0">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Μπαίνουν πρώτα τα σταθερά, μετά ό,τι τρώτε πιο συχνά, προτιμώντας τη μέρα που το συνηθίζετε.</p>
+       <p class="hint" style="margin:0">Πιο συχνά: ${esc(top.join(", "))}${two.length ? `<br>Για 2 μέρες στη σειρά: ${esc(two.join(", "))}` : ""}</p>`
+    : `<p class="hint" style="margin:0">Για προτάσεις από τα φαγητά σας χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}. Μέχρι τότε μπαίνουν μόνο τα σταθερά της εβδομάδας.</p>`;
+  return `<details class="std auto" data-std-box ${ui.stdOpen ? "open" : ""}>
+    <summary><span class="auto-ic">${ic("wand")}</span><span class="label"><span class="name">Αυτόματο πρόγραμμα</span>
+      <span class="meta">${stdLine ? `Σταθερά: ${esc(stdLine)}` : "Σταθερά της εβδομάδας και προτάσεις από τους προηγούμενους μήνες"}</span></span>${ic("down")}</summary>
+    <div class="std-body">
+      <h3 class="std-h">Σταθερά της εβδομάδας</h3>
+      ${[1, 2, 3, 4, 5, 6, 0].map(w => `<label class="std-row"><span>${DAYS_FULL[w]}</span>
+        <input class="field" data-std="${w}" value="${esc(weekStd(w))}" placeholder="—" maxlength="120" autocomplete="off" spellcheck="${SPELL}"></label>`).join("")}
+      <h3 class="std-h">Συμπλήρωση του ${MONTHS_GEN[m - 1]}</h3>
+      ${info}
+      <form data-form="gen-plan" class="gen-form">
+        <div class="radios">
+          <label><input type="radio" name="mode" value="empty" checked><span>Μόνο τις κενές μέρες</span></label>
+          <label><input type="radio" name="mode" value="all"><span>Όλο τον μήνα από την αρχή</span></label>
+          <label><input type="radio" name="mode" value="std"><span>Μόνο τα σταθερά</span></label>
+        </div>
+        <button class="btn" type="submit">${ic("wand")}Δημιουργία</button>
+      </form>
+    </div>
+  </details>`;
 }
 
 /* ----- μετακινήσεις στο πρόγραμμα φαγητού ----- */
@@ -946,7 +942,6 @@ const actions = {
     if (i && i.store !== b.dataset.store) { i.store = b.dataset.store; touch(i); }
     closeSheet(); changed();
   },
-  "gen-sheet": () => openSheet(genSheet()),
   "copy-meal": async b => {
     const t = mealOf(b.dataset.key);
     if (!t) return;
@@ -960,13 +955,6 @@ const actions = {
     closeSheet();
     const k = b.dataset.key, prev = mealOf(addDays(k, -1));
     if (prev) setMeals({ [k]: prev }, `Ίδιο με την προηγούμενη μέρα: ${prev}`);
-  },
-  "std-apply": () => {
-    const [y, m] = ymParts();
-    const ch = {};
-    for (const d of daysOf(y, m, doc.meals)) if (!d.meal.trim() && weekStd(d.w)) ch[d.key] = weekStd(d.w);
-    if (!Object.keys(ch).length) return toast(hasStd() ? "Δεν υπάρχουν κενές μέρες για τα σταθερά" : "Γράψε πρώτα τουλάχιστον ένα σταθερό φαγητό");
-    setMeals(ch, `Μπήκαν τα σταθερά σε ${Object.keys(ch).length} μέρες`);
   },
   "day-menu": b => openSheet(dayMenuSheet(b.dataset.key)),
   "day-insert": b => { closeSheet(); insertBlank(b.dataset.key); },
@@ -1086,7 +1074,12 @@ document.addEventListener("submit", e => {
   if (kind === "auth") { submitAuth(f); return; }
   if (kind === "gen-plan") {
     const [y, m] = ymParts();
-    const plan = buildPlan(y, m, v.mode === "all" ? "all" : "empty");
+    let plan;
+    if (v.mode === "std") {
+      plan = {};
+      for (const d of daysOf(y, m, doc.meals)) if (!d.meal.trim() && weekStd(d.w)) plan[d.key] = weekStd(d.w);
+      if (!hasStd()) { toast("Γράψε πρώτα τουλάχιστον ένα σταθερό φαγητό"); return; }
+    } else plan = buildPlan(y, m, v.mode === "all" ? "all" : "empty");
     closeSheet();
     const keys = plan ? Object.keys(plan) : [];
     if (!keys.length) { toast("Δεν υπάρχουν κενές μέρες για συμπλήρωση"); return; }
