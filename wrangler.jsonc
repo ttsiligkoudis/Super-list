@@ -3,6 +3,10 @@
   "name": "super-list",
   "main": "src/worker.js",
   "compatibility_date": "2025-09-01",
+  // Δικό μας domain. Το Cloudflare φτιάχνει μόνο του την εγγραφή DNS και το πιστοποιητικό.
+  "routes": [
+    { "pattern": "super.myportofolio.eu", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
