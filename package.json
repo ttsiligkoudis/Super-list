@@ -1,0 +1,10 @@
+{
+  "name": "super-list",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --kv DATA"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
