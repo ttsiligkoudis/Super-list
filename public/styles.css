@@ -52,7 +52,7 @@ button{cursor:pointer}
 .title-btn{flex:1;min-width:0;display:flex;align-items:center;gap:6px;border:0;background:none;padding:0;text-align:left}
 .title-btn h1{flex:0 1 auto}
 .title-btn .ic{color:var(--ink-2);width:20px;height:20px;margin-top:4px}
-.sync{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;color:var(--ink-2);white-space:nowrap}
+.sync{border:0;background:none;padding:6px 4px;border-radius:8px;font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:.75rem;color:var(--ink-2);white-space:nowrap}
 .sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--basil)}
 .sync[data-state="busy"]::before,.sync[data-state="pending"]::before{background:var(--citrus)}
 .sync[data-state="offline"]::before{background:var(--ink-2)}

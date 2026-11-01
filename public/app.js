@@ -160,19 +160,30 @@ function restore(snap) {
 
 /* ---------- sync ---------- */
 
+// Οι αλλαγές σώζονται αμέσως στο κινητό, αλλά στέλνονται στον server (εγγραφή στο KV)
+// το πολύ μία φορά κάθε 2 λεπτά, για να μένουμε μακριά από το όριο εγγραφών του Cloudflare.
+// Η ανάγνωση (για αλλαγές από άλλες συσκευές) γίνεται κάθε 20 δευτερόλεπτα και δεν μετράει σε εγγραφές.
+const PUSH_EVERY = 2 * 60 * 1000;
 let pushTimer = null, syncing = false, syncErr = false;
+const lastPushKey = () => `mm-lastpush:${session.uid}`;
+const lastPush = () => (session ? ls.get(lastPushKey(), 0) : 0);
+const pushWait = () => Math.max(0, lastPush() + PUSH_EVERY - now());
 
-function schedulePush(delay = 1200) { clearTimeout(pushTimer); pushTimer = setTimeout(sync, delay); }
+function schedulePush() {
+  if (pushTimer) return; // υπάρχει ήδη προγραμματισμένη αποστολή
+  pushTimer = setTimeout(() => { pushTimer = null; sync(); }, Math.max(1500, pushWait()));
+}
 
-async function sync() {
-  clearTimeout(pushTimer);
+async function sync({ force = false } = {}) {
   if (!session) return;
-  if (syncing) { schedulePush(800); return; }
+  if (syncing) { if (dirty) schedulePush(); return; }
   syncing = true; setStatus();
   try {
     const who = session;
     const headers = { authorization: `Bearer ${who.token}` };
-    const res = dirty
+    const push = dirty && (force || pushWait() === 0);
+    if (push) { clearTimeout(pushTimer); pushTimer = null; ls.set(lastPushKey(), now()); }
+    const res = push
       ? await fetch(API, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(doc) })
       : await fetch(API, { cache: "no-store", headers });
     if (res.status === 401) { endSession("Η σύνδεση έληξε. Συνδέσου ξανά."); return; }
@@ -185,7 +196,7 @@ async function sync() {
     persist();
     syncErr = false;
     softRender();
-    if (dirty) schedulePush(500);
+    if (dirty) schedulePush();
   } catch {
     syncErr = true;
   } finally {
@@ -202,9 +213,10 @@ function setStatus() {
   else if (dirty) { state = "pending"; text = "Σε αναμονή"; }
   el.dataset.state = state;
   el.textContent = text;
-  el.title = state === "offline" ? "Οι αλλαγές σώζονται στο κινητό και στέλνονται όταν βρεθεί σύνδεση." : "";
+  el.title = state === "offline" ? "Οι αλλαγές σώζονται στο κινητό και στέλνονται όταν βρεθεί σύνδεση."
+    : state === "pending" ? "Οι αλλαγές σώθηκαν στο κινητό και στέλνονται μέσα σε 2 λεπτά. Πάτα για αποστολή τώρα." : "Πάτα για έλεγχο τώρα.";
 }
-const syncBadge = () => `<span class="sync" id="sync" role="status"></span>`;
+const syncBadge = () => `<button type="button" class="sync" id="sync" data-act="sync-now" aria-live="polite"></button>`;
 
 /* ---------- toast & sheet ---------- */
 
@@ -807,6 +819,11 @@ const actions = {
     $("#print-root").innerHTML = renderSheet(ui.template, y, m, doc.meals);
     try { await document.fonts.ready; } catch {}
     window.print();
+  },
+  "sync-now": async () => {
+    const wasDirty = dirty;
+    await sync({ force: true });
+    if (wasDirty && !dirty && !syncErr) toast("Οι αλλαγές στάλθηκαν");
   },
   "pick-store": b => { const i = findById("items", b.dataset.id); if (i) openSheet(storePickSheet(i)); },
   "set-store": b => {
