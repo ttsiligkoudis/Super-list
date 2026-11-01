@@ -404,7 +404,11 @@ function listView() {
   const list = lists.find(l => l.id === ui.listId);
   const items = itemsOf(list.id);
   const sm = storeMap(), st = stores();
-  if (ui.filter !== "all" && ui.filter !== "none" && !sm[ui.filter]) ui.filter = "all";
+  // Φίλτρα μόνο για καταστήματα που έχουν προϊόντα σε αυτή τη λίστα
+  const cnt = {}; let noStore = 0;
+  for (const i of items) { if (sm[i.store]) cnt[i.store] = (cnt[i.store] || 0) + 1; else noStore++; }
+  const usedStores = st.filter(s => cnt[s.id]);
+  if (ui.filter === "none" ? !noStore : ui.filter !== "all" && !cnt[ui.filter]) ui.filter = "all";
   const inFilter = i => ui.filter === "all" || (ui.filter === "none" ? !sm[i.store] : i.store === ui.filter);
   const scoped = items.filter(inFilter);
   const done = scoped.filter(i => i.done).length;
@@ -426,10 +430,10 @@ function listView() {
       ${segs.map(s => `<span style="--n:${s.n};--h:${s.hue};--p:${s.d / s.n * 100}%"><i></i></span>`).join("")}
     </div>
     ${left.length && left.length <= 4 && done ? `<div class="meter-key">${left.map(s => `<span><b style="--h:${s.hue}"></b>${esc(s.name)}</span>`).join("")}</div>` : ""}
-    ${st.length ? `<div class="filters" role="group" aria-label="Κατάστημα">
+    ${usedStores.length ? `<div class="filters" role="group" aria-label="Κατάστημα">
       <button type="button" class="chip" data-act="filter" data-f="all" aria-pressed="${ui.filter === "all"}">Όλα</button>
-      ${st.map(s => `<button type="button" class="chip store" style="--c:${safeColor(s.color)}" data-act="filter" data-f="${s.id}" aria-pressed="${ui.filter === s.id}">${logo(s, "s")}${esc(s.name)}</button>`).join("")}
-      <button type="button" class="chip" data-act="filter" data-f="none" aria-pressed="${ui.filter === "none"}">Χωρίς κατάστημα</button>
+      ${usedStores.map(s => `<button type="button" class="chip store" style="--c:${safeColor(s.color)}" data-act="filter" data-f="${s.id}" aria-pressed="${ui.filter === s.id}">${logo(s, "s")}${esc(s.name)}<span class="chip-n num">${cnt[s.id]}</span></button>`).join("")}
+      ${noStore ? `<button type="button" class="chip" data-act="filter" data-f="none" aria-pressed="${ui.filter === "none"}">Χωρίς κατάστημα<span class="chip-n num">${noStore}</span></button>` : ""}
     </div>` : ""}`;
 
   const showStore = st.length > 0;

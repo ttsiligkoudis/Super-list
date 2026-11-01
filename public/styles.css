@@ -391,6 +391,7 @@ body.is-dragging .day input{pointer-events:none}
 .dish-row{cursor:pointer}
 .cat-grid.flat{padding:0;max-height:none}
 
+.chip-n{font-weight:500;opacity:.7;margin-left:2px}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
