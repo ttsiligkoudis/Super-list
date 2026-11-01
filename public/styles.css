@@ -375,6 +375,22 @@ body.is-dragging .day input{pointer-events:none}
 .std-h{font-size:.95rem;margin:6px 0 0}
 .gen-form{display:grid;gap:12px;margin-top:4px}
 
+
+/* basket button next to quick add */
+.basket-btn{position:relative;width:var(--composer-h);height:var(--composer-h);flex:none;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--basil);display:grid;place-items:center;box-shadow:var(--float)}
+.basket-btn .ic{width:26px;height:26px}
+.basket-btn .badge{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--basil);color:var(--basil-ink);font-size:.78rem;font-weight:800;display:grid;place-items:center;border:2px solid var(--bg)}
+.choice .box{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center}
+.choice .box.on{background:var(--basil);color:var(--basil-ink)}
+.choice .box.on .ic{width:16px;height:16px;stroke-width:3;color:var(--basil-ink)}
+
+/* meals: plan / dishes switch, dish library */
+.meal-seg{margin-top:14px}
+.dish-add{display:flex;gap:8px;margin-top:14px}
+.dish-add .field{flex:1}
+.dish-row{cursor:pointer}
+.cat-grid.flat{padding:0;max-height:none}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

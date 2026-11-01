@@ -22,7 +22,7 @@ const GUESS_SRC = {
   deli: "φετα|κασερ|γραβιερ|κεφαλοτυρ|χαλουμ|μοτσαρελ|παρμεζ|ανθοτυρ|μυζηθρ|τυρι|vache|σαλαμ|γαλοπουλ|ζαμπον|μπεικον|προσουτ|παριζα|ελιες",
   dairy: "γαλα|γιαουρτ|βουτυρ|κρεμα γαλακτ|τυρι κρεμα|philadelphia|αυγα|cottage|τζατζικ|πουτιγκ|κεφιρ|ριζογαλο|μαργαριν",
   bread: "ψωμ|φρυγαν|αρτοσκευ|κρουασαν|τορτιγ|πιτες|πιτα για|λαβας|κριτσιν|παξιμαδ|wasa|τοστ",
-  pantry: "μακαρον|ζυμαρ|σπαγγετ|spaghetti|λιγκουιν|πενες|κριθαρακ|χυλοπιτ|ριζι|φακες|φασολ|ρεβυθ|φαβα|αλευρ|ζαχαρ|μπεικιν|baking|πελτ|σαλτσα ντοματ|ντοματακι κονσερβ|νιφαδ|δημητριακ|βρωμη|λαδι|ελαιολαδο|ξυδι|κονσερβ|τονο|μαγια|κορν φλαουρ|σιμιγδαλ|πλιγουρ",
+  pantry: "μακαρον|ζυμαρ|σπαγγετ|spaghetti|λιγκουιν|πενες|κριθαρακ|χυλοπιτ|ρυζι|φακες|φασολ|ρεβυθ|φαβα|αλευρ|ζαχαρ|μπεικιν|baking|πελτ|σαλτσα ντοματ|ντοματακι κονσερβ|νιφαδ|δημητριακ|βρωμη|λαδι|ελαιολαδο|ξυδι|κονσερβ|τονο|μαγια|κορν φλαουρ|σιμιγδαλ|πλιγουρ",
   sauce: "κετσαπ|μαγιονεζ|μουσταρδ|αλατι|πιπερι|κανελ|ριγαν|μπαχαρ|ζωμο|κυβο|σως|σαλτσα|παπρικ|κυμιν|γαρυφαλ|μοσχοκαρυδ|βασιλικο",
   sweet: "σοκολατ|μπισκοτ|ταχιν|μελι|μαρμελαδ|πραλιν|nutella|κεικ|γλυκ|καραμελ|κρουτον|ξηροι καρπ|αμυγδαλ|καρυδ",
   frozen: "κατεψυγ|παγωτ|πιτσα|αρακα|φασολακ|σπανακοπιτ|τυροπιτ|πατατες τηγαν",
@@ -70,6 +70,39 @@ const ICONS = {
 };
 // Στο κινητό ο ορθογράφος του browser υπογραμμίζει σωστές λέξεις (το πληκτρολόγιο διορθώνει ήδη),
 // στον υπολογιστή μένει ανοιχτός για να διορθώνεις με δεξί κλικ
+// Κατηγορίες φαγητών (για τον κατάλογο φαγητών και για ποικιλία στο αυτόματο πρόγραμμα)
+const DCATS = [
+  ["ospria", "Όσπρια", "#a0522d"], ["ladera", "Λαδερά & λαχανικά", "#3e8e41"], ["zymarika", "Ζυμαρικά & ρύζι", "#d68910"],
+  ["psaria", "Ψάρια & θαλασσινά", "#2e86c1"], ["poulerika", "Πουλερικά", "#e67e22"], ["kreas", "Κρεατικά", "#c0392b"],
+  ["salates", "Σαλάτες", "#27ae60"], ["pites", "Πίτες & φούρνου", "#b7862b"], ["avga", "Αυγά & ελαφριά", "#c9a227"],
+  ["exo", "Πίτσα, σουβλάκι & έξω", "#8e44ad"], ["other", "Άλλα", "#5d6d7e"]
+];
+const DCAT = Object.fromEntries(DCATS.map(([id, name, hue]) => [id, { name, hue }]));
+const DGUESS_SRC = {
+  ospria: "φακ|φασολαδ|φασολια|ρεβυθ|φαβα|γιγαντ|μαυρομματ",
+  ladera: "φασολακ|μπαμι|αρακα|μπριαμ|γεμιστ|λαδερ|λαχανικ|μπροκολ|κουνουπιδ|σπανακορυζ|πρασορυζ|λαχανορυζ|μελιτζαν|κολοκυθακ|ιμαμ|αγκιναρ|πατατες γιαχνι",
+  zymarika: "μακαρον|ζυμαρ|πενε|σπαγγετ|λιγκουιν|κριθαρακ|χυλοπιτ|ρυζι|ριζοτ|παστιτσ|λαζαν|pasta|νιοκ|tortellini|καρμπονα|κους κους",
+  psaria: "ψαρ|σολομ|τσιπουρ|λαβρακ|γαριδ|καλαμαρ|χταποδ|μπακαλιαρ|σαρδελ|γαυρ|τονο|θαλασσιν|μυδι|σουπια|κολιο|γοπα",
+  poulerika: "κοτοπουλ|κοτοσουβλακ|κοτομπουκ|κοτοπιτ|γαλοπουλ|φιλετιν|στηθος|μπουτακ|κοτοσουπ|chicken|nuggets",
+  kreas: "χοιριν|μοσχαρ|αρνι|κατσικ|μπριζολ|μπιφτεκ|κεφτε|κιμα|σουτζουκ|μουσακ|γιουβετσ|στιφαδ|λουκανικ|ψητο|ρολο|κοκκινιστ|σνιτσελ|παιδακ",
+  pites: "πιτα|πιτες|σπανακοπιτ|τυροπιτ|μπουγατσ|κις|φουρνου|σουφλε",
+  avga: "ομελετ|αυγ|στραπατσαδ|καγιανα|τοστ|σαντουιτς|πανκεικ|κρεπ",
+  exo: "πιτσα|σουβλακ|γυρο|burger|μπεργκερ|ντελιβερ|εξω|κινεζικ|σουσι|delivery"
+};
+const DGUESS = Object.entries(DGUESS_SRC).flatMap(([c, s]) => s.split("|").map(k => [k, c])).sort((a, b) => b[0].length - a[0].length);
+// Ο κατάλογος φαγητών φυλάγεται μαζί με το πρόγραμμα ως "dish:<όνομα χωρίς τόνους>" -> { t, c, u }
+const dishKey = name => `dish:${norm(name)}`;
+function guessDishCat(name) {
+  const n = norm(name);
+  if (n.startsWith("σαλατ")) return "salates";
+  for (const [k, c] of DGUESS) if (n.includes(k)) return c;
+  return n.includes("σαλατ") ? "salates" : "other";
+}
+function dishCat(name) {
+  const e = doc.meals[dishKey(name)];
+  return e && DCAT[e.c] ? e.c : guessDishCat(name);
+}
+
 const SPELL = window.matchMedia("(pointer: coarse)").matches ? "false" : "true";
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 
@@ -309,6 +342,12 @@ function render() {
   else view.innerHTML = listView();
   const hasList = onList && !!ui.listId;
   $("#composer").hidden = !hasList;
+  if (hasList) {
+    const n = itemsOf(ui.listId).filter(i => i.done).length;
+    $("#basketCount").textContent = n;
+    $("#basketCount").hidden = !n;
+    $("#basketBtn").setAttribute("aria-label", `Στο καλάθι: ${n}`);
+  }
   document.body.classList.toggle("with-composer", hasList);
 
   pendingRender = false;
@@ -467,7 +506,67 @@ function historyView() {
 
 function ymParts() { const [y, m] = ui.ym.split("-").map(Number); return [y, m]; }
 
+function mealsSeg() {
+  return `<div class="seg two meal-seg" role="group" aria-label="Προβολή">
+    <button type="button" data-act="meal-view" data-v="plan" aria-pressed="${ui.mealView !== "dishes"}">Πρόγραμμα</button>
+    <button type="button" data-act="meal-view" data-v="dishes" aria-pressed="${ui.mealView === "dishes"}">Φαγητά</button>
+  </div>`;
+}
+
+// Όλα τα φαγητά: όσα έχουν μπει στο πρόγραμμα, τα σταθερά και όσα προστέθηκαν στον κατάλογο
+function allDishes() {
+  const m = new Map();
+  for (const [k, v] of Object.entries(doc.meals)) {
+    const t = ((v && v.t) || "").trim();
+    if (!t) continue;
+    const key = norm(t);
+    const e = m.get(key) || { name: t, key, n: 0, lib: false, last: "" };
+    if (isDayKey(k)) { e.n++; if (k > e.last) { e.last = k; e.name = t; } }
+    if (k.startsWith("dish:")) { e.lib = true; if (!e.last) e.name = t; }
+    m.set(key, e);
+  }
+  // κρυμμένα: φαγητά που σβήστηκαν από τον κατάλογο (μένουν μόνο αν ξαναμπούν στο πρόγραμμα)
+  for (const [k, v] of Object.entries(doc.meals)) if (k.startsWith("dish:") && v && v.hidden) { const e = m.get(k.slice(5)); if (e) e.hidden = true; }
+  return [...m.values()].filter(e => !e.hidden);
+}
+
+function dishesView() {
+  const list = allDishes();
+  const groups = DCATS.map(([c, name, hue]) => ({ c, name, hue, items: list.filter(e => dishCat(e.name) === c).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, "el")) })).filter(g => g.items.length);
+  return `<div class="month-nav"><h1 class="display">Φαγητά</h1></div>
+    ${mealsSeg()}
+    <p class="sub">Ο κατάλογος με τα φαγητά σας. Το αυτόματο πρόγραμμα διαλέγει από εδώ και φροντίζει να μην έρχεται η ίδια κατηγορία μέρες στη σειρά.</p>
+    <form class="dish-add" data-form="add-dish" autocomplete="off">
+      <input class="field" id="newDish" name="name" placeholder="Νέο φαγητό, π.χ. Γιουβέτσι" maxlength="120" required spellcheck="${SPELL}" aria-label="Νέο φαγητό">
+      <button class="btn" type="submit">Προσθήκη</button>
+    </form>
+    ${groups.length ? groups.map(g => `<section class="aisle"><h2 class="aisle-sign"><span class="sw" style="--h:${g.hue}"></span>${g.name}<span class="n">${g.items.length}</span></h2>
+      <ul class="rows">${g.items.map(e => `<li class="row"><button type="button" class="tick dish-row" data-act="dish-edit" data-key="${esc(e.key)}">
+        <span class="label"><span class="name">${esc(e.name)}</span><span class="meta">${e.n ? `${e.n} ${e.n === 1 ? "φορά" : "φορές"} στο πρόγραμμα` : "Δεν έχει μπει ακόμα στο πρόγραμμα"}</span></span>
+        </button><button type="button" class="act" data-act="dish-edit" data-key="${esc(e.key)}" aria-label="Επεξεργασία: ${esc(e.name)}">${ic("edit")}</button></li>`).join("")}</ul></section>`).join("")
+      : `<div class="empty"><p>Δεν υπάρχουν φαγητά ακόμα. Πρόσθεσε τα φαγητά που μαγειρεύετε συνήθως, ή γράψε στο πρόγραμμα και θα εμφανιστούν εδώ.</p></div>`}`;
+}
+
+function dishSheet(key) {
+  const e = allDishes().find(x => x.key === key);
+  if (!e) return "";
+  const cur = dishCat(e.name);
+  return `<h2 class="sheet-title">${esc(e.name)}</h2>
+    <form data-form="edit-dish" data-key="${esc(key)}" autocomplete="off">
+      <label class="fld">Όνομα<input class="field" name="name" value="${esc(e.name)}" required maxlength="120" spellcheck="${SPELL}"></label>
+      <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Κατηγορία</legend>
+        <div class="cat-grid flat">${DCATS.map(([c, l, hue]) => `<label><input type="radio" name="cat" value="${c}"${c === cur ? " checked" : ""}><span><span class="sw" style="--h:${hue}"></span>${l}</span></label>`).join("")}</div>
+      </fieldset>
+      ${e.n ? `<p class="hint" style="margin:0">Η μετονομασία αλλάζει το φαγητό και σε όλες τις μέρες του προγράμματος (${e.n}).</p>` : ""}
+      <div class="sheet-actions split">
+        <button type="button" class="btn ghost" data-act="dish-del" data-key="${esc(key)}" style="color:var(--danger)">${ic("trash")}Αφαίρεση</button>
+        <button class="btn" type="submit">Αποθήκευση</button>
+      </div>
+    </form>`;
+}
+
 function mealsView() {
+  if (ui.mealView === "dishes") return dishesView();
   const [y, m] = ymParts();
   const days = daysOf(y, m, doc.meals);
   const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
@@ -480,6 +579,7 @@ function mealsView() {
       <button type="button" class="icon-btn" data-act="month" data-d="-1" aria-label="Προηγούμενος μήνας">${ic("left")}</button>
       <button type="button" class="icon-btn" data-act="month" data-d="1" aria-label="Επόμενος μήνας">${ic("right")}</button>
     </div>
+    ${mealsSeg()}
     <p class="sub">${filled ? `${filled} από ${days.length} μέρες έχουν φαγητό` : "Γράψε τι θα φάτε κάθε μέρα. Αποθηκεύεται αυτόματα."}</p>
     ${filled ? `<p class="hint">Σύρε το ${ic("grip")} για να αλλάξεις μέρα σε ένα φαγητό. Πάτα την ημερομηνία για να βάλεις κενή μέρα ή να αφαιρέσεις μία.</p>` : ""}
     ${autoCard(y, m)}
@@ -610,6 +710,22 @@ function listMenuSheet(l) {
     </div>`;
 }
 
+function basketSheet() {
+  const items = itemsOf(ui.listId).filter(i => i.done);
+  const sm = storeMap();
+  if (!items.length) return `<h2 class="sheet-title">Στο καλάθι</h2><p class="sheet-text">Το καλάθι είναι άδειο. Τσέκαρε προϊόντα στη λίστα και θα εμφανιστούν εδώ.</p>
+    <button type="button" class="btn ghost" data-act="close-sheet">Εντάξει</button>`;
+  return `<h2 class="sheet-title">Στο καλάθι <span class="muted num">${items.length}</span></h2>
+    <p class="sheet-text small">Πάτα ένα προϊόν για να το βγάλεις από το καλάθι.</p>
+    <div class="choices">${items.map(i => {
+      const s = sm[i.store];
+      return `<button type="button" class="choice" data-act="basket-out" data-id="${i.id}">
+        <span class="box on">${ic("check")}</span>
+        <span class="label"><span class="name">${esc(i.name)}${i.qty ? ` <span class="qty">${esc(i.qty)}</span>` : ""}</span><span class="meta">${esc(CAT[catOf(i)].name)}${s ? ` (${esc(s.name)})` : ""}</span></span>
+        ${s ? logo(s, "s") : ""}</button>`;
+    }).join("")}</div>`;
+}
+
 function storePickSheet(i) {
   const st = stores();
   const opt = (id, inner, on) => `<button type="button" class="choice" data-act="set-store" data-id="${i.id}" data-store="${id}">${inner}${on ? ic("check") : ""}</button>`;
@@ -649,6 +765,11 @@ function mealStats(y, m) {
   }
   // «Για 2 μέρες»: τουλάχιστον τις μισές φορές που μαγειρεύτηκε, φαγώθηκε και την επόμενη μέρα
   for (const s of st.values()) s.twoDay = s.pairs > 0 && s.pairs * 2 >= s.cooks;
+  for (const [k, v] of Object.entries(doc.meals)) {
+    const t = ((v && v.t) || "").trim();
+    if (!k.startsWith("dish:") || !t || v.hidden || st.has(norm(t))) continue;
+    st.set(norm(t), { name: t, key: norm(t), cooks: 0, pairs: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "", twoDay: false });
+  }
   return [...st.values()];
 }
 function weighted(c) {
@@ -670,6 +791,8 @@ function buildPlan(y, m, mode) {
     if (std && free(d)) { out[d.key] = std; placed.push({ d: d.d, key: norm(std), std: true }); }
   }
   if (st.length < 4) return out;
+  const catOfDay = new Map(); // μέρα -> κατηγορία, για να μην έρχονται ίδιες κατηγορίες συνέχεια
+  for (const p of placed) catOfDay.set(p.d, dishCat(p.key));
   for (let i = 0; i < days.length; i++) {
     const d = days[i];
     if (out[d.key] !== undefined || !free(d)) continue;
@@ -678,13 +801,19 @@ function buildPlan(y, m, mode) {
     let pick = null;
     for (const gap of [6, 4, 2, 1]) {
       const cands = st.filter(s => (!s.twoDay || nextFree) && !placed.some(p => p.key === s.key && Math.abs(p.d - d.d) < gap))
-        .map(s => ({ s, w: (s.cooks + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key && !p.std).length) }));
+        .map(s => {
+          let w = (Math.max(s.cooks, 0.6) + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key && !p.std).length);
+          const c = dishCat(s.name);
+          if (c !== "other" && (catOfDay.get(d.d - 1) === c || catOfDay.get(d.d + 1) === c)) w *= 0.3;
+          return { s, w };
+        });
       if (cands.length) { pick = weighted(cands); break; }
     }
     if (!pick) continue;
     out[d.key] = pick.s.name;
     placed.push({ d: d.d, key: pick.s.key });
-    if (pick.s.twoDay && nextFree) { out[next.key] = pick.s.name; placed.push({ d: next.d, key: pick.s.key }); i++; }
+    catOfDay.set(d.d, dishCat(pick.s.name));
+    if (pick.s.twoDay && nextFree) { out[next.key] = pick.s.name; placed.push({ d: next.d, key: pick.s.key }); catOfDay.set(next.d, catOfDay.get(d.d)); i++; }
   }
   return out;
 }
@@ -942,6 +1071,22 @@ const actions = {
     if (i && i.store !== b.dataset.store) { i.store = b.dataset.store; touch(i); }
     closeSheet(); changed();
   },
+  "basket-sheet": () => { if (ui.listId) openSheet(basketSheet()); },
+  "basket-out": b => {
+    const i = findById("items", b.dataset.id);
+    if (i) { i.done = false; touch(i); changed(); }
+    openSheet(basketSheet());
+  },
+  "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
+  "dish-edit": b => openSheet(dishSheet(b.dataset.key)),
+  "dish-del": b => {
+    const key = b.dataset.key, e = allDishes().find(x => x.key === key);
+    if (!e) return closeSheet();
+    const dk = `dish:${key}`, before = doc.meals[dk] ? { ...doc.meals[dk] } : null;
+    doc.meals[dk] = { t: e.n ? e.name : "", c: dishCat(e.name), hidden: true, u: now() };
+    closeSheet(); changed();
+    toast(`Αφαιρέθηκε από τον κατάλογο: ${e.name}`, { label: "Αναίρεση", run: () => { doc.meals[dk] = before ? { ...before, u: now() } : { t: "", u: now() }; changed(); } });
+  },
   "copy-meal": async b => {
     const t = mealOf(b.dataset.key);
     if (!t) return;
@@ -1072,6 +1217,30 @@ document.addEventListener("submit", e => {
   const name = (v.name || "").trim();
 
   if (kind === "auth") { submitAuth(f); return; }
+  if (kind === "add-dish") {
+    if (!name) return;
+    const k = dishKey(name), ex = doc.meals[k];
+    doc.meals[k] = { t: cap(name), c: ex && ex.c ? ex.c : guessDishCat(name), u: now() };
+    changed();
+    const inp = $("#newDish"); if (inp) inp.focus();
+    toast(`${cap(name)} στο «${DCAT[dishCat(name)].name}»`, { label: "Αλλαγή", run: () => openSheet(dishSheet(norm(name))) });
+    return;
+  }
+  if (kind === "edit-dish") {
+    const oldKey = f.dataset.key, cat = DCAT[v.cat] ? v.cat : "other";
+    if (!name) return;
+    const e = allDishes().find(x => x.key === oldKey);
+    // μετονομασία σε όλες τις μέρες και στα σταθερά
+    if (e && norm(name) !== oldKey || e && name !== e.name) {
+      for (const [k, val] of Object.entries(doc.meals)) {
+        if ((isDayKey(k) || k.startsWith("w:")) && val && norm(val.t || "") === oldKey) doc.meals[k] = { t: name, u: now() };
+      }
+      if (norm(name) !== oldKey && doc.meals[`dish:${oldKey}`]) doc.meals[`dish:${oldKey}`] = { t: "", u: now() };
+    }
+    doc.meals[dishKey(name)] = { t: name, c: cat, u: now() };
+    closeSheet(); changed();
+    return;
+  }
   if (kind === "gen-plan") {
     const [y, m] = ymParts();
     let plan;
