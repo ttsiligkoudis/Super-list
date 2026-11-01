@@ -178,10 +178,10 @@ body.with-composer .toast{bottom:calc(var(--nav-h) + var(--composer-h) + env(saf
 .week{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
 .day{display:flex;align-items:center;gap:6px;border-top:1px solid var(--line);position:relative}
 .day:first-child{border-top:0}
-.day label{width:58px;flex:none;text-align:center;line-height:1;padding-block:10px}
-.day label .d{display:block;font-size:1.35rem}
-.day label .w{font-size:.72rem;font-weight:600;color:var(--ink-2)}
-.day.we label .w{color:var(--sea)}
+.day-date{border:0;background:none;color:inherit;cursor:pointer;width:58px;flex:none;text-align:center;line-height:1;padding-block:10px}
+.day-date .d{display:block;font-size:1.35rem}
+.day-date .w{font-size:.72rem;font-weight:600;color:var(--ink-2)}
+.day.we .day-date .w{color:var(--sea)}
 .day.today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0;background:var(--citrus)}
 .day input{flex:1;min-width:0;border:0;background:transparent;font-size:16px;padding:12px 12px 12px 4px;border-radius:10px}
 .day input::placeholder{color:color-mix(in srgb,var(--ink-2) 55%,transparent)}
@@ -242,7 +242,8 @@ select.field{appearance:auto}
 .sheet-actions.split{grid-template-columns:1fr 1fr}
 .choice{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;border:0;border-top:1px solid var(--line);background:none;text-align:left;padding:0 4px}
 .choice:first-child{border-top:0}
-.choice .label{flex:1}
+.choice .label{flex:1;padding-block:12px}
+.choice .meta{display:block;margin-top:2px;line-height:1.35}
 .choice .ic{color:var(--sea)}
 .choices{border:1px solid var(--line);border-radius:var(--r-m);padding:0 10px}
 @keyframes sheet-up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
@@ -327,6 +328,22 @@ body.signed-out{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
 .avatar{width:40px;height:40px;border-radius:50%;background:var(--sea-soft);color:var(--sea);display:grid;place-items:center;flex:none}
 .account .name{font-weight:700;overflow-wrap:anywhere}
 .sheet-text.small{font-size:.88rem}
+
+
+/* meals: reorder */
+.day-date:hover{background:var(--surface-2)}
+.day-date{border-radius:10px}
+.grip,.grip-space{width:40px;height:44px;flex:none}
+.grip{border:0;background:none;color:var(--ink-2);display:grid;place-items:center;cursor:grab;touch-action:none;border-radius:10px}
+.grip .ic{width:18px;height:18px}
+.grip:hover{background:var(--surface-2)}
+.day.dragging{position:relative;z-index:5;background:var(--surface);box-shadow:var(--float);border-radius:12px;opacity:.95}
+.day.dragging .grip{cursor:grabbing}
+.day.drop-target{box-shadow:inset 0 3px 0 var(--sea)}
+body.is-dragging{user-select:none;-webkit-user-select:none}
+body.is-dragging .day input{pointer-events:none}
+.hint .ic{width:16px;height:16px;vertical-align:-3px}
+.week{overflow:visible}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}

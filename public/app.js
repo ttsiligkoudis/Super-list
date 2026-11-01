@@ -60,10 +60,14 @@ const ICONS = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   store: '<path d="M4 10v10h16V10"/><path d="M3 10l2-6h14l2 6c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3z"/>',
+  grip: '<circle class="dot" cx="9" cy="6" r="1.6"/><circle class="dot" cx="15" cy="6" r="1.6"/><circle class="dot" cx="9" cy="12" r="1.6"/><circle class="dot" cx="15" cy="12" r="1.6"/><circle class="dot" cx="9" cy="18" r="1.6"/><circle class="dot" cx="15" cy="18" r="1.6"/>',
   wand: '<path d="M4 20L15 9"/><path d="M14 4l1 2.5L17.5 7 15 8l-1 2.5L13 8l-2.5-1L13 6z"/><path d="M19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
+// Στο κινητό ο ορθογράφος του browser υπογραμμίζει σωστές λέξεις (το πληκτρολόγιο διορθώνει ήδη),
+// στον υπολογιστή μένει ανοιχτός για να διορθώνεις με δεξί κλικ
+const SPELL = window.matchMedia("(pointer: coarse)").matches ? "false" : "true";
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 
 /* ---------- helpers ---------- */
@@ -476,10 +480,12 @@ function mealsView() {
     </div>
     <p class="sub">${filled ? `${filled} από ${days.length} μέρες έχουν φαγητό` : "Γράψε τι θα φάτε κάθε μέρα. Αποθηκεύεται αυτόματα."}</p>
     <button type="button" class="btn ghost gen-btn" data-act="gen-sheet">${ic("wand")}Αυτόματο πρόγραμμα</button>
+    ${filled ? `<p class="hint">Σύρε το ${ic("grip")} για να αλλάξεις μέρα σε ένα φαγητό. Πάτα την ημερομηνία για να βάλεις κενή μέρα ή να αφαιρέσεις μία.</p>` : ""}
     <div class="weeks">${weeks.map(wk => `<div class="week">${wk.map(d => `
-      <div class="day${d.weekend ? " we" : ""}${d.key === todayKey ? " today" : ""}">
-        <label for="m-${d.key}"><span class="d display num">${d.d}</span><span class="w">${WEEKDAYS[d.w]}</span></label>
-        <input id="m-${d.key}" data-meal="${d.key}" value="${esc(d.meal)}" list="dishes" placeholder="Τι θα φάμε;" maxlength="120" autocomplete="off" enterkeyhint="next">
+      <div class="day${d.weekend ? " we" : ""}${d.key === todayKey ? " today" : ""}" data-day="${d.key}">
+        <button type="button" class="day-date" data-act="day-menu" data-key="${d.key}" aria-label="Επιλογές για ${DAYS_FULL[d.w]} ${d.d}"><span class="d display num">${d.d}</span><span class="w">${WEEKDAYS[d.w]}</span></button>
+        <input id="m-${d.key}" data-meal="${d.key}" value="${esc(d.meal)}" list="dishes" placeholder="Τι θα φάμε;" maxlength="120" autocomplete="off" spellcheck="${SPELL}" enterkeyhint="next" aria-label="Φαγητό για ${DAYS_FULL[d.w]} ${d.d}">
+        ${d.meal ? `<button type="button" class="grip" data-grip="${d.key}" aria-label="Μετακίνηση: ${esc(d.meal)}">${ic("grip")}</button>` : `<span class="grip-space"></span>`}
       </div>`).join("")}</div>`).join("")}</div>
     <datalist id="dishes">${dishes.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
     <section class="print-card" aria-labelledby="print-h">
@@ -551,7 +557,7 @@ function itemSheet(i) {
   return `<h2 class="sheet-title">${esc(i.name)}</h2>
     <form data-form="edit-item" data-id="${i.id}" autocomplete="off">
       <div class="fld-row">
-        <label class="fld">Όνομα<input class="field" id="eName" name="name" value="${esc(i.name)}" required maxlength="80"></label>
+        <label class="fld">Όνομα<input class="field" id="eName" name="name" value="${esc(i.name)}" required maxlength="80" spellcheck="${SPELL}"></label>
         <label class="fld">Ποσότητα<input class="field" id="eQty" name="qty" value="${esc(i.qty)}" maxlength="30" placeholder="π.χ. ×2"></label>
       </div>
       <div class="fld">Διάδρομος
@@ -677,6 +683,74 @@ function genSheet() {
       </div>
       <button class="btn" type="submit">${ic("wand")}Δημιουργία</button>
     </form>`;
+}
+
+/* ----- μετακινήσεις στο πρόγραμμα φαγητού ----- */
+
+const DAYS_FULL = ["Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο"];
+const mealOf = k => ((doc.meals[k] && doc.meals[k].t) || "").trim() ? doc.meals[k].t : "";
+function addDays(key, n) {
+  const [y, m, d] = key.split("-").map(Number);
+  const t = new Date(y, m - 1, d + n);
+  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+}
+// Γράφει νέες τιμές σε ημέρες και δίνει αναίρεση για όλες μαζί
+function setMeals(changes, message) {
+  const keys = Object.keys(changes).filter(k => mealOf(k) !== changes[k]);
+  if (!keys.length) return;
+  const before = Object.fromEntries(keys.map(k => [k, mealOf(k)]));
+  for (const k of keys) doc.meals[k] = { t: changes[k], u: now() };
+  changed();
+  toast(message, { label: "Αναίρεση", run: () => { for (const k of keys) doc.meals[k] = { t: before[k], u: now() }; changed(); } });
+}
+// Κενή μέρα: τα φαγητά από εδώ κατεβαίνουν μία μέρα, μέχρι την πρώτη κενή μέρα (που τα «απορροφά»)
+function insertBlank(key) {
+  if (!mealOf(key)) return toast("Η μέρα είναι ήδη κενή");
+  const run = [key];
+  while (mealOf(addDays(run[run.length - 1], 1)) && run.length < 400) run.push(addDays(run[run.length - 1], 1));
+  const ch = { [key]: "" };
+  run.forEach(k => { ch[addDays(k, 1)] = mealOf(k); });
+  setMeals(ch, "Μπήκε κενή μέρα, τα επόμενα πήγαν μία μέρα κάτω");
+}
+// Αφαίρεση μέρας: τα φαγητά μετά ανεβαίνουν μία μέρα, μέχρι την πρώτη κενή μέρα
+function removeDay(key) {
+  const ch = {};
+  let k = key;
+  for (let n = 0; n < 400; n++) {
+    const next = addDays(k, 1), v = mealOf(next);
+    ch[k] = v;
+    if (!v) break;
+    k = next;
+  }
+  setMeals(ch, "Η μέρα αφαιρέθηκε, τα επόμενα ανέβηκαν μία μέρα");
+}
+// Μετακίνηση με σύρσιμο: το φαγητό πάει στη νέα μέρα και όσα είναι ανάμεσα μετακινούνται κατά μία
+function moveMeal(from, to) {
+  if (from === to) return;
+  const [y, m] = ymParts();
+  const keys = daysOf(y, m, doc.meals).map(d => d.key);
+  const vals = keys.map(mealOf);
+  const a = keys.indexOf(from), b = keys.indexOf(to);
+  if (a < 0 || b < 0) return;
+  const [v] = vals.splice(a, 1);
+  vals.splice(b, 0, v);
+  const ch = {};
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) ch[keys[i]] = vals[i];
+  const [, , dd] = to.split("-").map(Number);
+  setMeals(ch, `Το «${v}» μετακινήθηκε στις ${dd}/${m}`);
+}
+function dayMenuSheet(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const w = new Date(y, m - 1, d).getDay(), meal = mealOf(key);
+  const opt = (act, title, text) => `<button type="button" class="choice" data-act="${act}" data-key="${key}">
+    <span class="label"><span class="name">${title}</span><span class="meta">${text}</span></span></button>`;
+  return `<h2 class="sheet-title">${DAYS_FULL[w]} ${d}/${m}</h2>
+    ${meal ? `<p class="sheet-text">${esc(meal)}</p>` : ""}
+    <div class="choices">
+      ${meal ? opt("day-insert", "Κενή μέρα εδώ", "Αυτό και τα επόμενα φαγητά πάνε μία μέρα αργότερα, μέχρι την πρώτη κενή μέρα.") : ""}
+      ${opt("day-remove", "Αφαίρεση αυτής της μέρας", "Τα επόμενα φαγητά ανεβαίνουν μία μέρα νωρίτερα.")}
+      ${meal ? opt("day-clear", "Σβήσιμο φαγητού", "Η μέρα μένει κενή, τα άλλα δεν αλλάζουν.") : ""}
+    </div>`;
 }
 
 /* ----- σύνδεση ----- */
@@ -832,6 +906,10 @@ const actions = {
     closeSheet(); changed();
   },
   "gen-sheet": () => openSheet(genSheet()),
+  "day-menu": b => openSheet(dayMenuSheet(b.dataset.key)),
+  "day-insert": b => { closeSheet(); insertBlank(b.dataset.key); },
+  "day-remove": b => { closeSheet(); removeDay(b.dataset.key); },
+  "day-clear": b => { closeSheet(); setMeals({ [b.dataset.key]: "" }, "Το φαγητό σβήστηκε"); },
   "auth-mode": b => { authMode = b.dataset.m; render(); },
   "logout": async () => {
     const ok = await ask({ title: "Αποσύνδεση;", text: dirty ? "Υπάρχουν αλλαγές που δεν έχουν σταλεί ακόμα. Αν αποσυνδεθείς τώρα, θα χαθούν." : "Τα δεδομένα σου μένουν στον λογαριασμό. Θα τα βρεις όταν συνδεθείς ξανά.", ok: "Αποσύνδεση", danger: dirty });
@@ -988,8 +1066,61 @@ document.addEventListener("submit", e => {
 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
+/* ---------- σύρσιμο φαγητών ---------- */
+
+let drag = null;
+view.addEventListener("pointerdown", e => {
+  const g = e.target.closest("[data-grip]");
+  if (!g || (e.pointerType === "mouse" && e.button !== 0)) return;
+  e.preventDefault();
+  const rows = [...view.querySelectorAll("[data-day]")].map(el => {
+    const r = el.getBoundingClientRect();
+    return { el, key: el.dataset.day, top: r.top + window.scrollY, bottom: r.bottom + window.scrollY };
+  });
+  const row = g.closest("[data-day]");
+  drag = { from: row.dataset.day, row, rows, over: null, y0: e.clientY, s0: window.scrollY, id: e.pointerId, lastY: e.clientY };
+  try { g.setPointerCapture(e.pointerId); } catch {}
+  row.classList.add("dragging");
+  document.body.classList.add("is-dragging");
+  if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
+  drag.timer = setInterval(autoScroll, 16);
+});
+function dragMove(clientY) {
+  if (!drag) return;
+  drag.lastY = clientY;
+  drag.row.style.transform = `translateY(${clientY - drag.y0 + window.scrollY - drag.s0}px)`;
+  const y = clientY + window.scrollY;
+  const hit = drag.rows.find(r => y >= r.top && y < r.bottom) || null;
+  if (hit !== drag.over) {
+    if (drag.over) drag.over.el.classList.remove("drop-target");
+    drag.over = hit && hit.key !== drag.from ? hit : null;
+    if (drag.over) drag.over.el.classList.add("drop-target");
+  }
+}
+function autoScroll() {
+  if (!drag) return;
+  const edge = 90, y = drag.lastY, h = window.innerHeight;
+  const dy = y < edge ? -Math.ceil((edge - y) / 6) : y > h - edge - 70 ? Math.ceil((y - (h - edge - 70)) / 6) : 0;
+  if (dy) { window.scrollBy(0, dy); dragMove(y); }
+}
+view.addEventListener("pointermove", e => { if (drag && e.pointerId === drag.id) { e.preventDefault(); dragMove(e.clientY); } });
+function endDrag(drop) {
+  if (!drag) return;
+  clearInterval(drag.timer);
+  const { from, over, row } = drag;
+  row.classList.remove("dragging");
+  row.style.transform = "";
+  if (over) over.el.classList.remove("drop-target");
+  document.body.classList.remove("is-dragging");
+  drag = null;
+  if (drop && over) moveMeal(from, over.key);
+}
+view.addEventListener("pointerup", e => { if (drag && e.pointerId === drag.id) endDrag(true); });
+view.addEventListener("pointercancel", () => endDrag(false));
+
 /* ---------- start ---------- */
 
+$("#qa").setAttribute("spellcheck", SPELL);
 render();
 sync();
 setInterval(() => { if (document.visibilityState === "visible") sync(); }, 20000);
