@@ -45,6 +45,7 @@ const BRANDS = [
 ];
 const BRAND = Object.fromEntries(BRANDS.map(b => [b.id, b]));
 
+const MONTHS_GEN = ["Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου", "Ιουλίου", "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου"];
 const MONTHS_SHORT = ["Ιαν", "Φεβ", "Μάρ", "Απρ", "Μάι", "Ιούν", "Ιούλ", "Αύγ", "Σεπ", "Οκτ", "Νοέ", "Δεκ"];
 const WEEKDAYS = ["Κυρ", "Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ"];
 const UI_KEY = "mm-ui", AUTH_KEY = "mm-auth";
@@ -61,6 +62,8 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   store: '<path d="M4 10v10h16V10"/><path d="M3 10l2-6h14l2 6c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3z"/>',
   grip: '<circle class="dot" cx="9" cy="6" r="1.6"/><circle class="dot" cx="15" cy="6" r="1.6"/><circle class="dot" cx="9" cy="12" r="1.6"/><circle class="dot" cx="15" cy="12" r="1.6"/><circle class="dot" cx="9" cy="18" r="1.6"/><circle class="dot" cx="15" cy="18" r="1.6"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  ditto: '<path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
   wand: '<path d="M4 20L15 9"/><path d="M14 4l1 2.5L17.5 7 15 8l-1 2.5L13 8l-2.5-1L13 6z"/><path d="M19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
@@ -307,8 +310,7 @@ function render() {
   const hasList = onList && !!ui.listId;
   $("#composer").hidden = !hasList;
   document.body.classList.toggle("with-composer", hasList);
-  if (hasList) $("#known").innerHTML = [...knownProducts().values()].map(i => i.name)
-    .sort((a, b) => a.localeCompare(b, "el")).map(n => `<option value="${esc(n)}"></option>`).join("");
+
   pendingRender = false;
   setStatus();
 }
@@ -481,13 +483,25 @@ function mealsView() {
     <p class="sub">${filled ? `${filled} από ${days.length} μέρες έχουν φαγητό` : "Γράψε τι θα φάτε κάθε μέρα. Αποθηκεύεται αυτόματα."}</p>
     <button type="button" class="btn ghost gen-btn" data-act="gen-sheet">${ic("wand")}Αυτόματο πρόγραμμα</button>
     ${filled ? `<p class="hint">Σύρε το ${ic("grip")} για να αλλάξεις μέρα σε ένα φαγητό. Πάτα την ημερομηνία για να βάλεις κενή μέρα ή να αφαιρέσεις μία.</p>` : ""}
+    <details class="std" data-std-box ${ui.stdOpen ? "open" : ""}>
+      <summary><span class="label"><span class="name">Σταθερά φαγητά της εβδομάδας</span>
+        <span class="meta">${hasStd() ? esc([1, 2, 3, 4, 5, 6, 0].filter(weekStd).map(w => `${WEEKDAYS[w]}: ${weekStd(w)}`).join(", ")) : "Π.χ. Τετάρτη φακές, Παρασκευή φασολάδα"}</span></span>${ic("down")}</summary>
+      <div class="std-body">
+        ${[1, 2, 3, 4, 5, 6, 0].map(w => `<label class="std-row"><span>${DAYS_FULL[w]}</span>
+          <input class="field" data-std="${w}" value="${esc(weekStd(w))}" placeholder="—" maxlength="120" autocomplete="off" spellcheck="${SPELL}"></label>`).join("")}
+        <p class="hint" style="margin:0">Μπαίνουν πρώτα στο «Αυτόματο πρόγραμμα». Μπορείς και να τα βάλεις τώρα στις κενές μέρες του μήνα.</p>
+        <button type="button" class="btn ghost" data-act="std-apply">Βάλε τα στις κενές μέρες του ${MONTHS_GEN[m - 1]}</button>
+      </div>
+    </details>
     <div class="weeks">${weeks.map(wk => `<div class="week">${wk.map(d => `
       <div class="day${d.weekend ? " we" : ""}${d.key === todayKey ? " today" : ""}" data-day="${d.key}">
         <button type="button" class="day-date" data-act="day-menu" data-key="${d.key}" aria-label="Επιλογές για ${DAYS_FULL[d.w]} ${d.d}"><span class="d display num">${d.d}</span><span class="w">${WEEKDAYS[d.w]}</span></button>
-        <input id="m-${d.key}" data-meal="${d.key}" value="${esc(d.meal)}" list="dishes" placeholder="Τι θα φάμε;" maxlength="120" autocomplete="off" spellcheck="${SPELL}" enterkeyhint="next" aria-label="Φαγητό για ${DAYS_FULL[d.w]} ${d.d}">
+        <input id="m-${d.key}" data-meal="${d.key}" value="${esc(d.meal)}" placeholder="Τι θα φάμε;" maxlength="120" autocomplete="off" spellcheck="${SPELL}" enterkeyhint="next" aria-label="Φαγητό για ${DAYS_FULL[d.w]} ${d.d}">
+        ${d.meal ? `<button type="button" class="row-tool" data-act="copy-meal" data-key="${d.key}" aria-label="Αντιγραφή: ${esc(d.meal)}">${ic("copy")}</button>`
+          : mealOf(addDays(d.key, -1)) ? `<button type="button" class="row-tool" data-act="fill-above" data-key="${d.key}" aria-label="Ίδιο με την προηγούμενη μέρα: ${esc(mealOf(addDays(d.key, -1)))}" title="Ίδιο με την προηγούμενη μέρα">${ic("ditto")}</button>`
+          : `<span class="grip-space"></span>`}
         ${d.meal ? `<button type="button" class="grip" data-grip="${d.key}" aria-label="Μετακίνηση: ${esc(d.meal)}">${ic("grip")}</button>` : `<span class="grip-space"></span>`}
       </div>`).join("")}</div>`).join("")}</div>
-    <datalist id="dishes">${dishes.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
     <section class="print-card" aria-labelledby="print-h">
       <h2 id="print-h">Εκτύπωση σε A4</h2>
       <div class="seg" role="group" aria-label="Σχέδιο">
@@ -618,21 +632,33 @@ function storePickSheet(i) {
 
 /* ----- αυτόματο πρόγραμμα φαγητού ----- */
 
-// Στατιστικά από τους άλλους μήνες: πόσες φορές φαγώθηκε κάθε φαγητό και ποιες μέρες της εβδομάδας
+// Τα κλειδιά των ημερών είναι "ΕΕΕΕ-ΜΜ-ΗΗ". Τα σταθερά της εβδομάδας φυλάγονται ως "w:0" (Κυριακή) έως "w:6".
+const isDayKey = k => /^\d{4}-\d\d-\d\d$/.test(k);
+const weekStd = w => (((doc.meals[`w:${w}`] || {}).t) || "").trim();
+const hasStd = () => [0, 1, 2, 3, 4, 5, 6].some(w => weekStd(w));
+
+// Στατιστικά από τους άλλους μήνες. Δύο ίδιες συνεχόμενες μέρες μετράνε ως ένα μαγείρεμα για 2 μέρες.
 function mealStats(y, m) {
   const prefix = `${y}-${pad(m)}-`;
+  const entries = Object.entries(doc.meals)
+    .filter(([k, v]) => isDayKey(k) && !k.startsWith(prefix) && ((v && v.t) || "").trim())
+    .sort(([a], [b]) => (a < b ? -1 : 1));
   const st = new Map();
-  for (const [k, v] of Object.entries(doc.meals)) {
-    const t = ((v && v.t) || "").trim();
-    if (!t || k.startsWith(prefix)) continue;
-    const [yy, mm, dd] = k.split("-").map(Number);
-    const w = new Date(yy, mm - 1, dd).getDay();
-    const key = norm(t);
-    const s = st.get(key) || { name: t, key, n: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "" };
-    s.n++; s.wd[w]++;
+  let prevKey = null, prevDish = null, inPair = false;
+  for (const [k, v] of entries) {
+    const t = v.t.trim(), key = norm(t);
+    const cont = prevKey && addDays(prevKey, 1) === k && prevDish === key && !inPair;
+    prevKey = k; prevDish = key;
+    const s = st.get(key) || { name: t, key, cooks: 0, pairs: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "" };
     if (k > s.last) { s.last = k; s.name = t; }
     st.set(key, s);
+    if (cont) { s.pairs++; inPair = true; continue; } // δεύτερη μέρα του ίδιου μαγειρέματος
+    inPair = false;
+    const [yy, mm, dd] = k.split("-").map(Number);
+    s.cooks++; s.wd[new Date(yy, mm - 1, dd).getDay()]++;
   }
+  // «Για 2 μέρες»: τουλάχιστον τις μισές φορές που μαγειρεύτηκε, φαγώθηκε και την επόμενη μέρα
+  for (const s of st.values()) s.twoDay = s.pairs > 0 && s.pairs * 2 >= s.cooks;
   return [...st.values()];
 }
 function weighted(c) {
@@ -640,42 +666,56 @@ function weighted(c) {
   for (const x of c) { r -= x.w; if (r <= 0) return x; }
   return c[c.length - 1];
 }
-// Γεμίζει τις μέρες: προτιμά ό,τι τρώτε συχνά και τη μέρα που το συνηθίζετε,
-// αποφεύγει το ίδιο φαγητό σε λιγότερο από 6 μέρες (χαλαρώνει αν δεν φτάνουν τα φαγητά)
+// Γεμίζει τις μέρες: πρώτα τα σταθερά της εβδομάδας, μετά ό,τι τρώτε συχνά και τη μέρα που το συνηθίζετε.
+// Τα φαγητά «για 2 μέρες» μπαίνουν σε 2 συνεχόμενες μέρες. Το ίδιο φαγητό δεν ξαναμπαίνει πολύ σύντομα.
 function buildPlan(y, m, mode) {
   const st = mealStats(y, m);
-  if (st.length < 4) return null;
   const days = daysOf(y, m, doc.meals);
-  const placed = [];
-  if (mode === "empty") for (const d of days) if (d.meal.trim()) placed.push({ d: d.d, key: norm(d.meal) });
+  const free = d => mode === "all" || !d.meal.trim();
   const out = {};
+  const placed = []; // { d, key }
+  if (mode === "empty") for (const d of days) if (d.meal.trim()) placed.push({ d: d.d, key: norm(d.meal) });
   for (const d of days) {
-    if (mode === "empty" && d.meal.trim()) continue;
+    const std = weekStd(d.w);
+    if (std && free(d)) { out[d.key] = std; placed.push({ d: d.d, key: norm(std), std: true }); }
+  }
+  if (st.length < 4) return out;
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    if (out[d.key] !== undefined || !free(d)) continue;
+    const next = days[i + 1];
+    const nextFree = next && free(next) && out[next.key] === undefined;
     let pick = null;
     for (const gap of [6, 4, 2, 1]) {
-      const cands = st.filter(s => !placed.some(p => p.key === s.key && Math.abs(p.d - d.d) < gap))
-        .map(s => ({ s, w: (s.n + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key).length) }));
+      const cands = st.filter(s => (!s.twoDay || nextFree) && !placed.some(p => p.key === s.key && Math.abs(p.d - d.d) < gap))
+        .map(s => ({ s, w: (s.cooks + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key && !p.std).length) }));
       if (cands.length) { pick = weighted(cands); break; }
     }
     if (!pick) continue;
     out[d.key] = pick.s.name;
     placed.push({ d: d.d, key: pick.s.key });
+    if (pick.s.twoDay && nextFree) { out[next.key] = pick.s.name; placed.push({ d: next.d, key: pick.s.key }); i++; }
   }
   return out;
 }
 function genSheet() {
   const [y, m] = ymParts();
   const st = mealStats(y, m);
-  const months = new Set(Object.entries(doc.meals).filter(([k, v]) => (v.t || "").trim() && !k.startsWith(`${y}-${pad(m)}-`)).map(([k]) => k.slice(0, 7))).size;
-  if (st.length < 4) {
+  const months = new Set(Object.keys(doc.meals).filter(k => isDayKey(k) && mealOf(k) && !k.startsWith(`${y}-${pad(m)}-`)).map(k => k.slice(0, 7))).size;
+  const stdTxt = hasStd() ? `<p class="sheet-text small">Τα σταθερά της εβδομάδας μπαίνουν πρώτα στις μέρες τους.</p>` : "";
+  if (st.length < 4 && !hasStd()) {
     return `<h2 class="sheet-title">Αυτόματο πρόγραμμα</h2>
-      <p class="sheet-text">Για να φτιάξω πρόγραμμα χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}. Γράψε τι τρώτε σε έναν μήνα και ξαναδοκίμασε στον επόμενο.</p>
+      <p class="sheet-text">Για να φτιάξω πρόγραμμα χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}, ή σταθερά φαγητά της εβδομάδας. Γράψε τι τρώτε σε έναν μήνα και ξαναδοκίμασε στον επόμενο.</p>
       <button type="button" class="btn ghost" data-act="close-sheet">Εντάξει</button>`;
   }
-  const top = [...st].sort((a, b) => b.n - a.n).slice(0, 5).map(s => s.name);
+  const top = [...st].sort((a, b) => b.cooks - a.cooks).slice(0, 5).map(s => s.name);
+  const two = st.filter(s => s.twoDay).map(s => s.name);
   return `<h2 class="sheet-title">Αυτόματο πρόγραμμα: ${MONTHS[m - 1]} ${y}</h2>
-    <p class="sheet-text">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Προτιμώ ό,τι τρώτε πιο συχνά και τη μέρα που το συνηθίζετε, και δεν βάζω το ίδιο φαγητό δύο φορές μέσα σε 6 μέρες.</p>
+    ${st.length >= 4 ? `<p class="sheet-text">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Προτιμώ ό,τι τρώτε πιο συχνά και τη μέρα που το συνηθίζετε.</p>
     <p class="sheet-text small">Πιο συχνά: ${esc(top.join(", "))}</p>
+    ${two.length ? `<p class="sheet-text small">Για 2 μέρες στη σειρά: ${esc(two.join(", "))}</p>` : ""}`
+    : `<p class="sheet-text">Δεν υπάρχουν ακόμα αρκετά φαγητά από άλλους μήνες, οπότε θα μπουν μόνο τα σταθερά της εβδομάδας.</p>`}
+    ${stdTxt}
     <form data-form="gen-plan">
       <div class="radios">
         <label><input type="radio" name="mode" value="empty" checked><span>Μόνο τις κενές μέρες</span></label>
@@ -748,6 +788,7 @@ function dayMenuSheet(key) {
     ${meal ? `<p class="sheet-text">${esc(meal)}</p>` : ""}
     <div class="choices">
       ${meal ? opt("day-insert", "Κενή μέρα εδώ", "Αυτό και τα επόμενα φαγητά πάνε μία μέρα αργότερα, μέχρι την πρώτη κενή μέρα.") : ""}
+      ${mealOf(addDays(key, -1)) && mealOf(addDays(key, -1)) !== meal ? opt("fill-above", "Ίδιο με την προηγούμενη μέρα", esc(mealOf(addDays(key, -1)))) : ""}
       ${opt("day-remove", "Αφαίρεση αυτής της μέρας", "Τα επόμενα φαγητά ανεβαίνουν μία μέρα νωρίτερα.")}
       ${meal ? opt("day-clear", "Σβήσιμο φαγητού", "Η μέρα μένει κενή, τα άλλα δεν αλλάζουν.") : ""}
     </div>`;
@@ -906,6 +947,27 @@ const actions = {
     closeSheet(); changed();
   },
   "gen-sheet": () => openSheet(genSheet()),
+  "copy-meal": async b => {
+    const t = mealOf(b.dataset.key);
+    if (!t) return;
+    let ok = false;
+    try { await navigator.clipboard.writeText(t); ok = true; } catch {
+      try { const ta = document.createElement("textarea"); ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch {}
+    }
+    toast(ok ? `Αντιγράφηκε: ${t}` : "Η αντιγραφή δεν επιτρέπεται σε αυτόν τον browser");
+  },
+  "fill-above": b => {
+    closeSheet();
+    const k = b.dataset.key, prev = mealOf(addDays(k, -1));
+    if (prev) setMeals({ [k]: prev }, `Ίδιο με την προηγούμενη μέρα: ${prev}`);
+  },
+  "std-apply": () => {
+    const [y, m] = ymParts();
+    const ch = {};
+    for (const d of daysOf(y, m, doc.meals)) if (!d.meal.trim() && weekStd(d.w)) ch[d.key] = weekStd(d.w);
+    if (!Object.keys(ch).length) return toast(hasStd() ? "Δεν υπάρχουν κενές μέρες για τα σταθερά" : "Γράψε πρώτα τουλάχιστον ένα σταθερό φαγητό");
+    setMeals(ch, `Μπήκαν τα σταθερά σε ${Object.keys(ch).length} μέρες`);
+  },
   "day-menu": b => openSheet(dayMenuSheet(b.dataset.key)),
   "day-insert": b => { closeSheet(); insertBlank(b.dataset.key); },
   "day-remove": b => { closeSheet(); removeDay(b.dataset.key); },
@@ -966,6 +1028,7 @@ document.addEventListener("toggle", e => {
   const t = e.target;
   if (!t.matches) return;
   if (t.matches("[data-basket]")) { ui.basketOpen = t.open; saveUi(); }
+  if (t.matches("[data-std-box]")) { ui.stdOpen = t.open; saveUi(); }
   if (t.id === "catPicker") {
     if (t.open) pushLayer("picker");
     else if (t.dataset.silent) delete t.dataset.silent;
@@ -992,6 +1055,12 @@ document.addEventListener("change", e => {
 });
 
 view.addEventListener("input", e => {
+  const w = e.target.dataset.std;
+  if (w !== undefined) {
+    doc.meals[`w:${w}`] = { t: e.target.value.slice(0, 120), u: now() };
+    dirty = true; persist(); schedulePush(); setStatus();
+    return;
+  }
   const k = e.target.dataset.meal;
   if (k) {
     doc.meals[k] = { t: e.target.value.slice(0, 120), u: now() };
@@ -1065,6 +1134,104 @@ document.addEventListener("submit", e => {
 });
 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+
+/* ---------- προτάσεις καθώς γράφεις ---------- */
+
+// Πηγές: φαγητά από το πρόγραμμα (και τα σταθερά), προϊόντα από όλες τις λίστες. Πιο συχνά πρώτα.
+function dishSource() {
+  const m = new Map();
+  for (const v of Object.values(doc.meals)) {
+    const t = ((v && v.t) || "").trim();
+    if (!t) continue;
+    const k = norm(t), e = m.get(k) || { text: t, n: 0 };
+    e.n++; m.set(k, e);
+  }
+  return [...m.values()];
+}
+function productSource() {
+  const m = new Map();
+  for (const i of alive(doc.items)) {
+    const k = norm(i.name), e = m.get(k) || { text: i.name, n: 0, u: 0 };
+    e.n++;
+    if ((i.u || 0) > e.u) { e.u = i.u; e.text = i.name; }
+    m.set(k, e);
+  }
+  return [...m.values()];
+}
+function suggestions(input) {
+  const q = norm(input.value);
+  if (!q) return [];
+  const src = input.id === "qa" ? productSource() : dishSource();
+  const words = q.split(/\s+/).filter(Boolean);
+  return src.map(e => {
+    const t = norm(e.text);
+    if (t === q || !words.every(w => t.includes(w))) return null;
+    const score = (t.startsWith(q) ? 100 : t.split(/\s+/).some(w => w.startsWith(words[0])) ? 50 : 0) + e.n;
+    return { ...e, score };
+  }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 6);
+}
+const sug = { box: $("#suggest"), input: null, items: [], active: -1 };
+function showSuggest(input) {
+  const items = suggestions(input);
+  sug.input = input; sug.items = items; sug.active = -1;
+  if (!items.length) return hideSuggest();
+  const q = norm(input.value);
+  sug.box.innerHTML = items.map((e, i) => {
+    const t = e.text, n = norm(t), at = n.indexOf(q);
+    const label = at >= 0 && n.length === t.length
+      ? `${esc(t.slice(0, at))}<b>${esc(t.slice(at, at + q.length))}</b>${esc(t.slice(at + q.length))}` : esc(t);
+    return `<button type="button" role="option" class="sug" data-sug="${i}" id="sug-${i}">${label}</button>`;
+  }).join("");
+  sug.box.hidden = false;
+  placeSuggest();
+  input.setAttribute("aria-expanded", "true");
+}
+function placeSuggest() {
+  if (sug.box.hidden || !sug.input) return;
+  const r = sug.input.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+  const left = Math.max(8, Math.min(r.left, vw - 8 - Math.max(r.width, 220)));
+  sug.box.style.left = left + "px";
+  sug.box.style.width = Math.max(r.width, 220) + "px";
+  const h = sug.box.offsetHeight, vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  // κάτω από το πεδίο αν χωράει, αλλιώς από πάνω (π.χ. η γρήγορη προσθήκη στο κάτω μέρος)
+  const below = r.bottom + 6 + h <= vh || sug.input.id !== "qa" && r.top < h + 12;
+  sug.box.style.top = (below ? r.bottom + 6 : r.top - 6 - h) + "px";
+}
+function hideSuggest() {
+  sug.box.hidden = true; sug.box.innerHTML = ""; sug.items = []; sug.active = -1;
+  if (sug.input) sug.input.setAttribute("aria-expanded", "false");
+}
+function pickSuggest(i) {
+  const e = sug.items[i], input = sug.input;
+  if (!e || !input) return;
+  input.value = e.text;
+  hideSuggest();
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  hideSuggest();
+  input.focus();
+}
+const suggestTarget = el => el && (el.id === "qa" || el.dataset.meal !== undefined || el.dataset.std !== undefined);
+document.addEventListener("input", e => { if (suggestTarget(e.target)) showSuggest(e.target); });
+document.addEventListener("focusin", e => { if (suggestTarget(e.target)) { e.target.setAttribute("role", "combobox"); e.target.setAttribute("aria-controls", "suggest"); } });
+document.addEventListener("focusout", e => {
+  const el = e.target;
+  if (suggestTarget(el)) setTimeout(() => { if (sug.input === el && document.activeElement !== el) hideSuggest(); }, 120);
+});
+sug.box.addEventListener("pointerdown", e => e.preventDefault()); // το πεδίο κρατάει το focus
+sug.box.addEventListener("click", e => { const b = e.target.closest("[data-sug]"); if (b) pickSuggest(+b.dataset.sug); });
+document.addEventListener("keydown", e => {
+  if (sug.box.hidden || e.target !== sug.input) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const n = sug.items.length;
+    sug.active = (sug.active + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+    sug.box.querySelectorAll(".sug").forEach((b, i) => b.classList.toggle("on", i === sug.active));
+    e.target.setAttribute("aria-activedescendant", `sug-${sug.active}`);
+  } else if (e.key === "Enter" && sug.active >= 0) { e.preventDefault(); e.stopImmediatePropagation(); pickSuggest(sug.active); }
+  else if (e.key === "Escape") { e.stopImmediatePropagation(); hideSuggest(); }
+}, true);
+window.addEventListener("scroll", placeSuggest, { passive: true });
+if (window.visualViewport) window.visualViewport.addEventListener("resize", placeSuggest);
 
 /* ---------- σύρσιμο φαγητών ---------- */
 

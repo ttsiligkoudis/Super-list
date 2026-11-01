@@ -174,7 +174,7 @@ body.with-composer .toast{bottom:calc(var(--nav-h) + var(--composer-h) + env(saf
 .month-nav h1{flex:1;font-size:1.85rem;margin:0}
 .month-nav h1 .y{color:var(--ink-2);font-weight:500}
 .sub{margin:4px 0 0;font-size:.9rem;color:var(--ink-2)}
-.weeks{display:grid;gap:12px;margin-top:16px}
+.weeks{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-top:16px}
 .week{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
 .day{display:flex;align-items:center;gap:6px;border-top:1px solid var(--line);position:relative}
 .day:first-child{border-top:0}
@@ -344,6 +344,30 @@ body.is-dragging{user-select:none;-webkit-user-select:none}
 body.is-dragging .day input{pointer-events:none}
 .hint .ic{width:16px;height:16px;vertical-align:-3px}
 .week{overflow:visible}
+
+
+/* suggestions while typing */
+.suggest{position:fixed;z-index:40;max-height:min(46vh,320px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--float);padding:6px;display:grid;gap:2px}
+.sug{display:block;width:100%;text-align:left;border:0;background:none;min-height:44px;padding:10px 12px;border-radius:10px;font-size:1rem;color:var(--ink)}
+.sug b{font-weight:700;color:var(--sea)}
+.sug:hover,.sug.on{background:var(--sea-soft)}
+
+/* meals: copy / same-as-above */
+.row-tool{width:40px;height:44px;flex:none;border:0;background:none;color:var(--ink-2);display:grid;place-items:center;border-radius:10px}
+.row-tool .ic{width:19px;height:19px}
+.row-tool:hover{background:var(--surface-2);color:var(--ink)}
+.day .grip-space{width:40px}
+
+/* weekly standards */
+.std{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m)}
+.std summary{list-style:none;display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+.std summary::-webkit-details-marker{display:none}
+.std summary .label{flex:1}
+.std summary .name{font-weight:700}
+.std summary .ic{color:var(--ink-2);transition:transform .2s}
+.std[open] summary .ic{transform:rotate(180deg)}
+.std-body{border-top:1px solid var(--line);padding:12px 14px 14px;display:grid;gap:8px}
+.std-row{display:grid;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:10px;font-size:.92rem;font-weight:600}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}

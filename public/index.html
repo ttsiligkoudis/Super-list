@@ -26,12 +26,13 @@
 
 <form class="composer" id="composer" data-form="quick-add" autocomplete="off" hidden>
   <label class="sr" for="qa">Πρόσθεσε προϊόν</label>
-  <input id="qa" name="name" list="known" placeholder="Πρόσθεσε προϊόν, π.χ. Γάλα 2" maxlength="80" enterkeyhint="done">
+  <input id="qa" name="name" autocomplete="off" aria-autocomplete="list" placeholder="Πρόσθεσε προϊόν, π.χ. Γάλα 2" maxlength="80" enterkeyhint="done">
   <button class="composer-btn" type="submit" aria-label="Προσθήκη">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   </button>
-  <datalist id="known"></datalist>
 </form>
+
+<div class="suggest" id="suggest" role="listbox" aria-label="Προτάσεις" hidden></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
