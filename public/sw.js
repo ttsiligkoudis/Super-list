@@ -1,8 +1,8 @@
 // Offline support: the app shell is served from cache and refreshed in the background.
 // /api/* always goes to the network (the app keeps its own copy of the data).
-const CACHE = "psonia-v2";
+const CACHE = "psonia-v3";
 const SHELL = ["/", "/styles.css", "/app.js", "/merge.js", "/templates.js", "/manifest.webmanifest",
-  "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+  "/icon.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -33,7 +33,9 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
+  const isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  const isLogo = url.hostname === "www.google.com" && url.pathname.startsWith("/s2/favicons");
+  if (isFont || isLogo) {
     e.respondWith(caches.open(CACHE).then(async c => {
       const cached = await c.match(req);
       if (cached) return cached;

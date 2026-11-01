@@ -248,6 +248,55 @@ select.field{appearance:auto}
 @keyframes sheet-up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
 @keyframes fade{from{opacity:0}}
 
+
+/* store logos: brand favicon on white, or a monogram in the store colour */
+.logo{position:relative;display:inline-grid;place-items:center;flex:none;border-radius:8px;background:var(--c);color:#fff;overflow:hidden;font-weight:800;line-height:1}
+.logo.s{width:20px;height:20px;border-radius:6px;font-size:.68rem}
+.logo.m{width:28px;height:28px;font-size:.85rem}
+.logo.l{width:40px;height:40px;border-radius:11px;font-size:1.05rem}
+.logo img{position:absolute;inset:12%;width:76%;height:76%;object-fit:contain}
+.logo.img{background:#fff;box-shadow:inset 0 0 0 1px rgba(19,35,51,.12)}
+.logo.img b{visibility:hidden}
+.chip.store{padding-left:8px}
+.chip.store[aria-pressed="true"] .logo.img{box-shadow:none}
+
+/* row actions: edit + delete */
+.row-acts{display:flex;flex:none;margin-right:4px}
+.act{width:42px;height:44px;border:0;background:none;color:var(--ink-2);display:grid;place-items:center;border-radius:12px}
+.act .ic{width:20px;height:20px}
+.act:hover{background:var(--surface-2);color:var(--ink)}
+.act.del:hover{color:var(--danger)}
+.tag{gap:6px}
+.tag-name{max-width:84px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:420px){.rows .tag-name{display:none}}
+
+/* stores tab */
+.sec-title{font-size:1.05rem;margin:26px 0 10px}
+.brand-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.brand{display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);text-align:left;font-weight:600;font-size:.92rem}
+.brand>span:not(.logo){flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25}
+.brand>.ic{color:var(--sea);width:20px;height:20px}
+.brand:hover{border-color:var(--sea)}
+.swatch-in{background:none;box-shadow:none;width:40px;height:40px;border-radius:11px}
+
+/* category picker (replaces the native dropdown) */
+.picker{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.picker summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;cursor:pointer;color:var(--ink);font-size:1rem;font-weight:600}
+.picker summary::-webkit-details-marker{display:none}
+.picker summary .picked{flex:1}
+.picker summary .ic{color:var(--ink-2);transition:transform .2s}
+.picker[open] summary .ic{transform:rotate(180deg)}
+.picker[open] summary{border-bottom:1px solid var(--line)}
+.sw{display:inline-block}
+.picker .sw,.cat-grid .sw{width:6px;height:18px;border-radius:3px;background:var(--h);flex:none}
+.cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px;max-height:46vh;overflow:auto}
+.cat-grid label{position:relative}
+.cat-grid input{position:absolute;opacity:0;inset:0}
+.cat-grid label>span{display:flex;align-items:center;gap:9px;min-height:46px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);font-size:.86rem;font-weight:600;color:var(--ink);line-height:1.2}
+.cat-grid input:checked+span{border-color:var(--sea);background:var(--sea-soft)}
+.cat-grid input:focus-visible+span{outline:2px solid var(--sea);outline-offset:2px}
+@media (max-width:360px){.cat-grid{grid-template-columns:1fr}}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

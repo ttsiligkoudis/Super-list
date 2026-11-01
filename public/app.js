@@ -47,6 +47,18 @@ const SEED = {
   care: ["Κρεμοσάπουνο", "Conditioner", "Μωρομάντηλα"]
 };
 
+// Γνωστές αλυσίδες: το λογότυπο έρχεται από το favicon του site τους, με αρχικό γράμμα αν δεν φορτώσει
+const BRANDS = [
+  { id: "lidl", name: "Lidl", domain: "lidl-hellas.gr", color: "#0050aa", alias: ["λιντλ"] },
+  { id: "masoutis", name: "Μασούτης", domain: "masoutis.gr", color: "#c8102e", alias: ["masoutis"] },
+  { id: "sklavenitis", name: "Σκλαβενίτης", domain: "sklavenitis.gr", color: "#e3501f", alias: ["sklavenitis"] },
+  { id: "ab", name: "ΑΒ Βασιλόπουλος", domain: "ab.gr", color: "#d0021b", alias: ["αβ", "ab", "βασιλοπουλος", "ab βασιλοπουλος"] },
+  { id: "discount", name: "Discount Markt", domain: "discountmarkt.gr", color: "#e2a400", alias: ["discount", "ντισκαουντ"] },
+  { id: "mymarket", name: "My market", domain: "mymarket.gr", color: "#e4002b", alias: ["mymarket", "μαι μαρκετ"] },
+  { id: "kritikos", name: "Κρητικός", domain: "kritikos-sm.gr", color: "#005baa", alias: ["kritikos"] }
+];
+const BRAND = Object.fromEntries(BRANDS.map(b => [b.id, b]));
+
 const MONTHS_SHORT = ["Ιαν", "Φεβ", "Μάρ", "Απρ", "Μάι", "Ιούν", "Ιούλ", "Αύγ", "Σεπ", "Οκτ", "Νοέ", "Δεκ"];
 const WEEKDAYS = ["Κυρ", "Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ"];
 const DOC_KEY = "mm-doc", UI_KEY = "mm-ui", DIRTY_KEY = "mm-dirty";
@@ -60,7 +72,8 @@ const ICONS = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   print: '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>'
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 
@@ -78,6 +91,20 @@ const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
+function brandOf(s) {
+  if (!s) return null;
+  if (s.brand && BRAND[s.brand]) return BRAND[s.brand];
+  const n = norm(s.name);
+  return BRANDS.find(b => norm(b.name) === n || b.alias.some(a => norm(a) === n)) || null;
+}
+// size: "s" (chips, tags), "m" (rows, radios), "l" (stores tab)
+function logo(s, size = "m") {
+  const b = brandOf(s);
+  const color = safeColor(s.color || (b && b.color));
+  const letter = esc((s.name || "?").trim().charAt(0).toLocaleUpperCase("el"));
+  const img = b ? `<img src="https://www.google.com/s2/favicons?domain=${b.domain}&sz=128" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.parentElement.classList.add('img')" onerror="this.remove()">` : "";
+  return `<span class="logo ${size}" style="--c:${color}" aria-hidden="true"><b>${letter}</b>${img}</span>`;
+}
 const guessCat = name => { const n = norm(name); for (const [k, c] of GUESS) if (n.includes(k)) return c; return "other"; };
 
 // "Γάλα 2", "Κιμάς 2,5 κιλά", "5 cottage cheese", "Αυγά x12"
@@ -96,8 +123,8 @@ function seedDoc() {
   const T = Date.UTC(2026, 10, 1, 11, 0);
   const d = emptyDoc();
   d.stores = [
-    { id: "seed-lidl", name: "Lidl", color: "#0050aa", order: 1, u: 1 },
-    { id: "seed-masoutis", name: "Μασούτης", color: "#c8102e", order: 2, u: 1 }
+    { id: "seed-lidl", name: "Lidl", brand: "lidl", color: "#0050aa", order: 1, u: 1 },
+    { id: "seed-masoutis", name: "Μασούτης", brand: "masoutis", color: "#c8102e", order: 2, u: 1 }
   ];
   d.lists = [{ id: "seed-list-1", name: "Ψώνια 1/11", createdAt: T, closedAt: null, u: 1 }];
   let n = 0;
@@ -282,8 +309,11 @@ function rowHtml(i, sm, showStore, inBasket) {
       <span class="label"><span class="name">${esc(i.name)}${i.qty ? `<span class="qty">${esc(i.qty)}</span>` : ""}</span>
         ${inBasket ? `<span class="meta">${esc(CAT[catOf(i)].name)}</span>` : ""}</span>
     </button>
-    ${s && showStore ? `<span class="tag" style="--c:${safeColor(s.color)}"><span class="sw"></span>${esc(s.name)}</span>` : ""}
-    <button type="button" class="more" data-act="edit-item" data-id="${i.id}" aria-label="Επεξεργασία: ${esc(i.name)}">${ic("more")}</button>
+    ${s && showStore ? `<span class="tag" title="${esc(s.name)}">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>` : ""}
+    <span class="row-acts">
+      <button type="button" class="act" data-act="edit-item" data-id="${i.id}" aria-label="Επεξεργασία: ${esc(i.name)}">${ic("edit")}</button>
+      <button type="button" class="act del" data-act="del-item" data-id="${i.id}" aria-label="Διαγραφή: ${esc(i.name)}">${ic("trash")}</button>
+    </span>
   </li>`;
 }
 
@@ -322,7 +352,7 @@ function listView() {
     ${left.length && left.length <= 4 && done ? `<div class="meter-key">${left.map(s => `<span><b style="--h:${s.hue}"></b>${esc(s.name)}</span>`).join("")}</div>` : ""}
     ${st.length ? `<div class="filters" role="group" aria-label="Κατάστημα">
       <button type="button" class="chip" data-act="filter" data-f="all" aria-pressed="${ui.filter === "all"}">Όλα</button>
-      ${st.map(s => `<button type="button" class="chip store" style="--c:${safeColor(s.color)}" data-act="filter" data-f="${s.id}" aria-pressed="${ui.filter === s.id}"><span class="sw"></span>${esc(s.name)}</button>`).join("")}
+      ${st.map(s => `<button type="button" class="chip store" style="--c:${safeColor(s.color)}" data-act="filter" data-f="${s.id}" aria-pressed="${ui.filter === s.id}">${logo(s, "s")}${esc(s.name)}</button>`).join("")}
       <button type="button" class="chip" data-act="filter" data-f="none" aria-pressed="${ui.filter === "none"}">Χωρίς κατάστημα</button>
     </div>` : ""}`;
 
@@ -389,7 +419,7 @@ function historyView() {
         <span class="datebox"><span class="d display num">${d.getDate()}</span><span class="m">${MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== today.getFullYear() ? " " + d.getFullYear() : ""}</span></span>
         <span class="label"><span class="name">${esc(l.name)}</span>
           <span class="meta">${got} από ${items.length} αγοράστηκαν</span>
-          ${used.length ? `<span class="stores-used">${used.map(s => `<span class="tag" style="--c:${safeColor(s.color)};padding:0"><span class="sw"></span>${esc(s.name)}</span>`).join("")}</span>` : ""}
+          ${used.length ? `<span class="stores-used">${used.map(s => `<span class="tag" style="padding:0">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>`).join("")}</span>` : ""}
         </span>${ic("down")}
       </button>${body}</article>`;
   }).join("") + `</div>`;
@@ -453,17 +483,26 @@ window.addEventListener("resize", fitPreview);
 
 function storesView() {
   const st = stores();
+  const have = new Set(st.map(s => (brandOf(s) || {}).id).filter(Boolean));
+  const avail = BRANDS.filter(b => !have.has(b.id));
   return `<header class="vhead"><h1 class="display">Καταστήματα</h1>${syncBadge()}</header>
-    <p class="hint">Το χρώμα κάθε καταστήματος φαίνεται στα φίλτρα και δίπλα στα προϊόντα. Πάτα το χρώμα για να το αλλάξεις.</p>
-    ${st.length ? `<div class="store-list">${st.map(s => `<div class="store-row">
-        <span class="swatch-in" style="--c:${safeColor(s.color)}"><input type="color" id="sc-${s.id}" value="${safeColor(s.color)}" data-store-color="${s.id}" aria-label="Χρώμα για ${esc(s.name)}"></span>
+    ${st.length ? `<div class="store-list">${st.map(s => {
+      const b = brandOf(s);
+      return `<div class="store-row">
+        ${b ? logo(s, "l") : `<span class="swatch-in" style="--c:${safeColor(s.color)}">${logo(s, "l")}<input type="color" id="sc-${s.id}" value="${safeColor(s.color)}" data-store-color="${s.id}" aria-label="Χρώμα για ${esc(s.name)}"></span>`}
         <input class="field" id="sn-${s.id}" value="${esc(s.name)}" data-store-name="${s.id}" maxlength="30" aria-label="Όνομα καταστήματος">
         <button type="button" class="icon-btn" data-act="del-store" data-id="${s.id}" aria-label="Διαγραφή ${esc(s.name)}">${ic("trash")}</button>
-      </div>`).join("")}</div>` : ""}
+      </div>`;
+    }).join("")}</div>` : `<p class="hint">Δεν έχεις καταστήματα ακόμα. Διάλεξε από τις αλυσίδες παρακάτω.</p>`}
+    ${avail.length ? `<h2 class="sec-title">Γνωστές αλυσίδες</h2>
+      <div class="brand-grid">${avail.map(b => `<button type="button" class="brand" data-act="add-brand" data-id="${b.id}">
+        ${logo({ name: b.name, brand: b.id, color: b.color }, "l")}<span>${esc(b.name)}</span>${ic("plus")}</button>`).join("")}</div>` : ""}
+    <h2 class="sec-title">Άλλο κατάστημα</h2>
     <form class="add-store" data-form="add-store" autocomplete="off">
-      <input class="field" id="newStore" name="name" placeholder="Νέο κατάστημα, π.χ. Σκλαβενίτης" required maxlength="30" aria-label="Νέο κατάστημα">
+      <input class="field" id="newStore" name="name" placeholder="π.χ. Φούρνος της γειτονιάς" required maxlength="30" aria-label="Όνομα καταστήματος">
       <button class="btn" type="submit">Προσθήκη</button>
-    </form>`;
+    </form>
+    <p class="hint">Στα δικά σου καταστήματα πάτα τον κύκλο για να αλλάξεις χρώμα.</p>`;
 }
 
 /* ----- sheets ----- */
@@ -476,11 +515,18 @@ function itemSheet(i) {
         <label class="fld">Όνομα<input class="field" id="eName" name="name" value="${esc(i.name)}" required maxlength="80"></label>
         <label class="fld">Ποσότητα<input class="field" id="eQty" name="qty" value="${esc(i.qty)}" maxlength="30" placeholder="π.χ. ×2"></label>
       </div>
-      <label class="fld">Διάδρομος<select class="field" id="eCat" name="cat">${CATS.map(([c, l]) => `<option value="${c}"${c === catOf(i) ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <div class="fld">Διάδρομος
+        <details class="picker" id="catPicker">
+          <summary><span class="sw" style="--h:${CAT[catOf(i)].hue}"></span><span class="picked">${CAT[catOf(i)].name}</span>${ic("down")}</summary>
+          <div class="cat-grid" role="radiogroup" aria-label="Διάδρομος">
+            ${CATS.map(([c, l, hue]) => `<label><input type="radio" name="cat" value="${c}"${c === catOf(i) ? " checked" : ""}><span><span class="sw" style="--h:${hue}"></span>${l}</span></label>`).join("")}
+          </div>
+        </details>
+      </div>
       <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Κατάστημα</legend>
         <div class="radios">
           <label><input type="radio" name="store" value=""${!i.store || !st.find(s => s.id === i.store) ? " checked" : ""}><span>Κανένα</span></label>
-          ${st.map(s => `<label><input type="radio" name="store" value="${s.id}"${s.id === i.store ? " checked" : ""}><span style="--c:${safeColor(s.color)}"><span class="sw"></span>${esc(s.name)}</span></label>`).join("")}
+          ${st.map(s => `<label><input type="radio" name="store" value="${s.id}"${s.id === i.store ? " checked" : ""}><span>${logo(s, "s")}${esc(s.name)}</span></label>`).join("")}
         </div>
       </fieldset>
       <div class="sheet-actions split">
@@ -597,6 +643,15 @@ const actions = {
     try { await document.fonts.ready; } catch {}
     window.print();
   },
+  "add-brand": b => {
+    const br = BRAND[b.dataset.id];
+    if (!br) return;
+    const st = stores();
+    doc.stores.push(touch({ id: uid(), name: br.name, brand: br.id, color: br.color,
+      order: Math.max(0, ...st.map(s => s.order || 0)) + 1 }));
+    changed();
+    toast(`Προστέθηκε: ${br.name}`);
+  },
   "del-store": async b => {
     const s = findById("stores", b.dataset.id);
     if (!s) return;
@@ -638,6 +693,13 @@ document.addEventListener("toggle", e => {
 
 document.addEventListener("change", e => {
   const el = e.target;
+  if (el.name === "cat" && el.closest("#catPicker")) {
+    const p = el.closest("#catPicker"), c = CAT[el.value];
+    p.querySelector(".picked").textContent = c.name;
+    p.querySelector("summary .sw").style.setProperty("--h", c.hue);
+    p.open = false;
+    return;
+  }
   if (el.dataset.storeName) {
     const s = findById("stores", el.dataset.storeName), v = el.value.trim();
     if (s && v && v !== s.name) { s.name = v; touch(s); changed(); }
@@ -653,7 +715,7 @@ view.addEventListener("input", e => {
     doc.meals[k] = { t: e.target.value.slice(0, 120), u: now() };
     dirty = true; persist(); schedulePush(); refreshPreview(); setStatus();
   }
-  if (e.target.dataset.storeColor) e.target.parentElement.style.setProperty("--c", e.target.value);
+  if (e.target.dataset.storeColor) { const lg = e.target.parentElement.querySelector(".logo"); if (lg) lg.style.setProperty("--c", e.target.value); }
 });
 view.addEventListener("keydown", e => {
   if (e.key !== "Enter" || !e.target.dataset.meal) return;

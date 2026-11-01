@@ -44,6 +44,8 @@ npm run dev
 - `public/templates.js`: τα σχέδια εκτύπωσης
 - `public/merge.js`: ο κανόνας συγχώνευσης, κοινός για κινητό και server
 - `public/sw.js`, `manifest.webmanifest`, εικονίδια: offline και εγκατάσταση
+
+Τα λογότυπα των αλυσίδων (Lidl, Μασούτης, Σκλαβενίτης, ΑΒ, Discount Markt, My market, Κρητικός) φορτώνονται από το favicon του site τους μέσω της υπηρεσίας favicons της Google και κρατιούνται για offline χρήση. Αν δεν φορτώσουν, εμφανίζεται το αρχικό γράμμα στο χρώμα της αλυσίδας. Η λίστα των αλυσίδων βρίσκεται στο `BRANDS` στο `public/app.js`.
 - `src/worker.js`: το `/api/data` που διαβάζει και γράφει το KV
 - `wrangler.jsonc`: ρυθμίσεις Worker, static assets και KV
 
