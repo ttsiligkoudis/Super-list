@@ -402,6 +402,16 @@ body.is-dragging .day input{pointer-events:none}
 .pill .ic{width:16px;height:16px;color:var(--sea)}
 .pill:hover{border-color:var(--sea)}
 
+
+/* built-in products sheet */
+.prod-groups{display:grid;gap:8px}
+.pgroup{margin-top:0}
+.pgroup summary{padding:10px 12px}
+.pgroup .pill-wrap{padding:0 12px 12px}
+.sw-bar{width:5px;height:18px;border-radius:3px;background:var(--h);flex:none}
+.pill.on{background:var(--basil);border-color:var(--basil);color:var(--basil-ink)}
+.pill.on .ic{color:var(--basil-ink)}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

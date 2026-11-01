@@ -1,6 +1,7 @@
 import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
+import { BUILTIN_PRODUCTS } from "./products.js";
 
 /* ---------- constants ---------- */
 
@@ -120,6 +121,8 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : now().toString(36) 
 const listName = () => { const d = new Date(); return `Ψώνια ${d.getDate()}/${d.getMonth() + 1}`; };
 const norm = s => String(s).trim().toLocaleLowerCase("el").normalize("NFD").replace(/[̀-ͯ]/g, "");
 const BUILTIN = new Map(BUILTIN_DISHES.map(([name, c]) => [norm(name), { name, c }]));
+// Βασικός κατάλογος προϊόντων (ίδιος για όλους): όνομα χωρίς τόνους -> { name, c }
+const BPROD = new Map(BUILTIN_PRODUCTS.map(([name, c]) => [norm(name), { name, c }]));
 const safeColor = c => /^#[0-9a-f]{6}$/i.test(c || "") ? c : "#5d6d7e";
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -454,7 +457,8 @@ function listView() {
     aisles = scoped.length
       ? `<div class="empty"><p>Όλα είναι στο καλάθι.${ui.filter === "all" ? " Αν τελείωσες, βάλε τη λίστα στο Ιστορικό." : ""}</p>
          ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Τελείωσαν τα ψώνια</button>` : ""}</div>`
-      : `<div class="empty"><p>${items.length ? "Κανένα προϊόν για αυτό το κατάστημα." : "Η λίστα είναι άδεια. Γράψε το πρώτο προϊόν στο πεδίο κάτω."}</p></div>`;
+      : `<div class="empty"><p>${items.length ? "Κανένα προϊόν για αυτό το κατάστημα." : "Η λίστα είναι άδεια. Γράψε το πρώτο προϊόν στο πεδίο κάτω ή διάλεξε από τα βασικά προϊόντα."}</p>
+         ${items.length ? "" : `<button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Βασικά προϊόντα</button>`}</div>`;
   }
   h += aisles;
 
@@ -722,6 +726,21 @@ function listsSheet() {
     <button type="button" class="btn" data-act="new-list">${ic("plus")}Νέα λίστα</button>`;
 }
 
+// Βασικά προϊόντα: αναζήτηση και προσθήκη με ένα πάτημα στην τρέχουσα λίστα
+function productsSheet() {
+  const inList = new Set(itemsOf(ui.listId).map(i => norm(i.name)));
+  const groups = CATS.map(([c, name, hue]) => ({ c, name, hue, items: BUILTIN_PRODUCTS.filter(([, pc]) => pc === c) })).filter(g => g.items.length);
+  return `<h2 class="sheet-title">Βασικά προϊόντα</h2>
+    <input class="field" id="pfind" placeholder="Αναζήτηση, π.χ. γιαούρτι" autocomplete="off" spellcheck="${SPELL}" aria-label="Αναζήτηση προϊόντος">
+    <p class="sheet-text small" id="pfindNone" hidden>Δεν βρέθηκε. Γράψε το στο πεδίο της λίστας για να το προσθέσεις.</p>
+    <div class="prod-groups">${groups.map(g => `<details class="std pgroup" data-pgroup>
+      <summary><span class="sw-bar" style="--h:${g.hue}"></span><span class="label"><span class="name">${g.name}</span></span><span class="muted small num">${g.items.length}</span>${ic("down")}</summary>
+      <div class="pill-wrap">${g.items.map(([n]) => {
+        const has = inList.has(norm(n));
+        return `<button type="button" class="pill${has ? " on" : ""}" data-act="prod-add" data-name="${esc(n)}" data-k="${esc(norm(n))}" ${has ? 'aria-pressed="true"' : ""}>${ic(has ? "check" : "plus")}${esc(n)}</button>`;
+      }).join("")}</div></details>`).join("")}</div>`;
+}
+
 function listMenuSheet(l) {
   return `<h2 class="sheet-title">Επιλογές λίστας</h2>
     <form data-form="rename-list" data-id="${l.id}" autocomplete="off">
@@ -730,6 +749,7 @@ function listMenuSheet(l) {
     </form>
     <div class="sheet-actions">
       <button type="button" class="btn basil" data-act="close-list">${ic("check")}Τελείωσαν τα ψώνια</button>
+      <button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Πρόσθεσε από τα βασικά προϊόντα</button>
       <button type="button" class="btn ghost" data-act="uncheck-all">Άδειασμα καλαθιού</button>
       <button type="button" class="btn text" style="color:var(--danger)" data-act="delete-list" data-id="${l.id}">Διαγραφή λίστας</button>
     </div>`;
@@ -1109,6 +1129,18 @@ const actions = {
     openSheet(basketSheet());
   },
   "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
+  "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
+  "prod-add": b => {
+    if (!ui.listId || b.classList.contains("on")) return;
+    const bp = BPROD.get(b.dataset.k);
+    if (!bp) return;
+    const known = knownProducts().get(b.dataset.k), sm = storeMap();
+    const order = Math.max(0, ...itemsOf(ui.listId).map(i => i.order || 0)) + 1;
+    doc.items.push(touch({ id: uid(), listId: ui.listId, name: bp.name, qty: "", cat: known && CAT[known.cat] ? known.cat : bp.c,
+      store: sm[ui.filter] ? ui.filter : known && sm[known.store] ? known.store : "", done: false, order }));
+    dirty = true; persist(); schedulePush(); pendingRender = true;
+    b.classList.add("on"); b.setAttribute("aria-pressed", "true"); b.innerHTML = ic("check") + esc(bp.name);
+  },
   "builtin-add": b => {
     const e = BUILTIN.get(b.dataset.key);
     if (!e) return;
@@ -1226,6 +1258,18 @@ document.addEventListener("change", e => {
   }
 });
 
+document.addEventListener("input", e => {
+  if (e.target.id !== "pfind") return;
+  const q = norm(e.target.value);
+  let any = false;
+  document.querySelectorAll("[data-pgroup]").forEach(g => {
+    let n = 0;
+    g.querySelectorAll(".pill").forEach(p => { const hit = !q || p.dataset.k.includes(q); p.hidden = !hit; if (hit) n++; });
+    g.hidden = !n; g.open = !!q && n > 0;
+    if (n) any = true;
+  });
+  $("#pfindNone").hidden = any;
+});
 view.addEventListener("input", e => {
   const w = e.target.dataset.std;
   if (w !== undefined) {
@@ -1306,8 +1350,9 @@ document.addEventListener("submit", e => {
     const known = knownProducts().get(norm(p.name));
     const sm = storeMap();
     const order = Math.max(0, ...itemsOf(ui.listId).map(i => i.order || 0)) + 1;
-    const item = touch({ id: uid(), listId: ui.listId, name: known ? known.name : cap(p.name), qty: p.qty,
-      cat: (known && CAT[known.cat] ? known.cat : guessCat(p.name)),
+    const bp = BPROD.get(norm(p.name));
+    const item = touch({ id: uid(), listId: ui.listId, name: known ? known.name : bp ? bp.name : cap(p.name), qty: p.qty,
+      cat: known && CAT[known.cat] ? known.cat : bp ? bp.c : guessCat(p.name),
       store: sm[ui.filter] ? ui.filter : (known && sm[known.store] ? known.store : ""),
       done: false, order });
     doc.items.push(item);
@@ -1358,6 +1403,7 @@ function productSource() {
     if ((i.u || 0) > e.u) { e.u = i.u; e.text = i.name; }
     m.set(k, e);
   }
+  for (const [k, b] of BPROD) if (!m.has(k)) m.set(k, { text: b.name, n: 0 });
   return [...m.values()];
 }
 function suggestions(input) {
