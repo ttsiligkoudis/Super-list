@@ -1,5 +1,6 @@
 import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
+import { BUILTIN_DISHES } from "./dishes.js";
 
 /* ---------- constants ---------- */
 
@@ -98,9 +99,12 @@ function guessDishCat(name) {
   for (const [k, c] of DGUESS) if (n.includes(k)) return c;
   return n.includes("σαλατ") ? "salates" : "other";
 }
+// Βασικός κατάλογος ελληνικών φαγητών (ίδιος για όλους): όνομα χωρίς τόνους -> { name, c }
 function dishCat(name) {
   const e = doc.meals[dishKey(name)];
-  return e && DCAT[e.c] ? e.c : guessDishCat(name);
+  if (e && DCAT[e.c]) return e.c;
+  const b = BUILTIN.get(norm(name));
+  return b ? b.c : guessDishCat(name);
 }
 
 const SPELL = window.matchMedia("(pointer: coarse)").matches ? "false" : "true";
@@ -115,6 +119,7 @@ const now = () => Date.now();
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : now().toString(36) + Math.random().toString(36).slice(2));
 const listName = () => { const d = new Date(); return `Ψώνια ${d.getDate()}/${d.getMonth() + 1}`; };
 const norm = s => String(s).trim().toLocaleLowerCase("el").normalize("NFD").replace(/[̀-ͯ]/g, "");
+const BUILTIN = new Map(BUILTIN_DISHES.map(([name, c]) => [norm(name), { name, c }]));
 const safeColor = c => /^#[0-9a-f]{6}$/i.test(c || "") ? c : "#5d6d7e";
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -548,7 +553,23 @@ function dishesView() {
       <ul class="rows">${g.items.map(e => `<li class="row"><button type="button" class="tick dish-row" data-act="dish-edit" data-key="${esc(e.key)}">
         <span class="label"><span class="name">${esc(e.name)}</span><span class="meta">${e.n ? `${e.n} ${e.n === 1 ? "φορά" : "φορές"} στο πρόγραμμα` : "Δεν έχει μπει ακόμα στο πρόγραμμα"}</span></span>
         </button><button type="button" class="act" data-act="dish-edit" data-key="${esc(e.key)}" aria-label="Επεξεργασία: ${esc(e.name)}">${ic("edit")}</button></li>`).join("")}</ul></section>`).join("")
-      : `<div class="empty"><p>Δεν υπάρχουν φαγητά ακόμα. Πρόσθεσε τα φαγητά που μαγειρεύετε συνήθως, ή γράψε στο πρόγραμμα και θα εμφανιστούν εδώ.</p></div>`}`;
+      : `<div class="empty"><p>Δεν υπάρχουν φαγητά ακόμα. Πρόσθεσε τα φαγητά που μαγειρεύετε συνήθως, ή γράψε στο πρόγραμμα και θα εμφανιστούν εδώ.</p></div>`}
+    ${builtinSection(list)}`;
+}
+
+// Βασικά ελληνικά φαγητά που δεν είναι ακόμα στον κατάλογο: ένα πάτημα και μπαίνουν (με μεγαλύτερο βάρος)
+function builtinSection(list) {
+  const have = new Set(list.map(e => e.key));
+  const rest = [...BUILTIN].filter(([k]) => !have.has(k));
+  if (!rest.length) return "";
+  const groups = DCATS.map(([c, name, hue]) => ({ name, hue, items: rest.filter(([, b]) => b.c === c) })).filter(g => g.items.length);
+  return `<details class="std builtin" data-builtin-box ${ui.builtinOpen ? "open" : ""}>
+    <summary><span class="label"><span class="name">Βασικά ελληνικά φαγητά</span>
+      <span class="meta">${rest.length} φαγητά για όλους. Το αυτόματο πρόγραμμα τα διαλέγει σπάνια. Πάτα ένα για να μπει στον κατάλογό σας και να προτιμάται.</span></span>${ic("down")}</summary>
+    <div class="std-body">${groups.map(g => `<h3 class="std-h"><span class="sw" style="--h:${g.hue}"></span>${g.name}</h3>
+      <div class="pill-wrap">${g.items.map(([k, b]) => `<button type="button" class="pill" data-act="builtin-add" data-key="${esc(k)}">${ic("plus")}${esc(b.name)}</button>`).join("")}</div>`).join("")}
+    </div>
+  </details>`;
 }
 
 function dishSheet(key) {
@@ -771,8 +792,14 @@ function mealStats(y, m) {
   for (const s of st.values()) s.twoDay = s.pairs > 0 && s.pairs * 2 >= s.cooks;
   for (const [k, v] of Object.entries(doc.meals)) {
     const t = ((v && v.t) || "").trim();
-    if (!k.startsWith("dish:") || !t || v.hidden || st.has(norm(t))) continue;
-    st.set(norm(t), { name: t, key: norm(t), cooks: 0, pairs: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "", twoDay: false });
+    if (!k.startsWith("dish:") || !t || v.hidden) continue;
+    if (st.has(norm(t))) { st.get(norm(t)).lib = true; continue; }
+    st.set(norm(t), { name: t, key: norm(t), cooks: 0, pairs: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "", twoDay: false, lib: true });
+  }
+  // ο βασικός κατάλογος, εκτός από όσα έχει αφαιρέσει ο χρήστης
+  for (const [key, b] of BUILTIN) {
+    if (st.has(key) || (doc.meals[`dish:${key}`] || {}).hidden) continue;
+    st.set(key, { name: b.name, key, cooks: 0, pairs: 0, wd: [0, 0, 0, 0, 0, 0, 0], last: "", twoDay: false, builtin: true });
   }
   return [...st.values()];
 }
@@ -806,7 +833,9 @@ function buildPlan(y, m, mode) {
     for (const gap of [6, 4, 2, 1]) {
       const cands = st.filter(s => (!s.twoDay || nextFree) && !placed.some(p => p.key === s.key && Math.abs(p.d - d.d) < gap))
         .map(s => {
-          let w = (Math.max(s.cooks, 0.6) + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key && !p.std).length);
+          // βάρος: όσα έχετε φάει (συχνότητα + μέρα) >> όσα προσθέσατε στον κατάλογο (0,6) >> βασικός κατάλογος,
+          // που μοιράζεται συνολικά μόλις 0,3 σε όλα του τα φαγητά (≈ 0,003 το καθένα)
+          let w = ((s.cooks > 0 ? s.cooks : s.lib ? 0.6 : 0.3 / BUILTIN.size) + 3 * s.wd[d.w]) / (1 + 2 * placed.filter(p => p.key === s.key && !p.std).length);
           const c = dishCat(s.name);
           if (c !== "other" && (catOfDay.get(d.d - 1) === c || catOfDay.get(d.d + 1) === c)) w *= 0.3;
           return { s, w };
@@ -826,13 +855,11 @@ function autoCard(y, m) {
   const st = mealStats(y, m);
   const months = new Set(Object.keys(doc.meals).filter(k => isDayKey(k) && mealOf(k) && !k.startsWith(`${y}-${pad(m)}-`)).map(k => k.slice(0, 7))).size;
   const stdLine = [1, 2, 3, 4, 5, 6, 0].filter(weekStd).map(w => `${WEEKDAYS[w]}: ${weekStd(w)}`).join(", ");
-  const enough = st.length >= 4;
-  const top = [...st].sort((a, b) => b.cooks - a.cooks).slice(0, 5).map(s => s.name);
+  const eaten = st.filter(s => s.cooks > 0), own = st.filter(s => s.lib && !s.cooks);
+  const top = [...eaten].sort((a, b) => b.cooks - a.cooks).slice(0, 5).map(s => s.name);
   const two = st.filter(s => s.twoDay).map(s => s.name);
-  const info = enough
-    ? `<p class="hint" style="margin:0">Βρήκα ${st.length} διαφορετικά φαγητά από ${months} ${months === 1 ? "μήνα" : "μήνες"}. Μπαίνουν πρώτα τα σταθερά, μετά ό,τι τρώτε πιο συχνά, προτιμώντας τη μέρα που το συνηθίζετε.</p>
-       <p class="hint" style="margin:0">Πιο συχνά: ${esc(top.join(", "))}${two.length ? `<br>Για 2 μέρες στη σειρά: ${esc(two.join(", "))}` : ""}</p>`
-    : `<p class="hint" style="margin:0">Για προτάσεις από τα φαγητά σας χρειάζομαι τουλάχιστον 4 διαφορετικά φαγητά από άλλους μήνες${st.length ? ` (βρήκα ${st.length})` : ""}. Μέχρι τότε μπαίνουν μόνο τα σταθερά της εβδομάδας.</p>`;
+  const info = `<p class="hint" style="margin:0">${eaten.length ? `Βρήκα ${eaten.length} φαγητά που έχετε φάει σε ${months} ${months === 1 ? "μήνα" : "μήνες"}${own.length ? ` και ${own.length} ακόμα στον κατάλογό σας` : ""}. ` : own.length ? `Έχετε ${own.length} φαγητά στον κατάλογό σας. ` : ""}Μπαίνουν πρώτα τα σταθερά, μετά ό,τι τρώτε πιο συχνά (προτιμώντας τη μέρα που το συνηθίζετε), μετά ο κατάλογός σας και σπάνια κάποιο από τα ${BUILTIN.size} βασικά ελληνικά φαγητά.</p>
+    ${top.length ? `<p class="hint" style="margin:0">Πιο συχνά: ${esc(top.join(", "))}${two.length ? `<br>Για 2 μέρες στη σειρά: ${esc(two.join(", "))}` : ""}</p>` : ""}`;
   return `<details class="std auto" data-std-box ${ui.stdOpen ? "open" : ""}>
     <summary><span class="auto-ic">${ic("wand")}</span><span class="label"><span class="name">Αυτόματο πρόγραμμα</span>
       <span class="meta">${stdLine ? `Σταθερά: ${esc(stdLine)}` : "Σταθερά της εβδομάδας και προτάσεις από τους προηγούμενους μήνες"}</span></span>${ic("down")}</summary>
@@ -1082,6 +1109,13 @@ const actions = {
     openSheet(basketSheet());
   },
   "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
+  "builtin-add": b => {
+    const e = BUILTIN.get(b.dataset.key);
+    if (!e) return;
+    doc.meals[dishKey(e.name)] = { t: e.name, c: e.c, u: now() };
+    changed();
+    toast(`Μπήκε στον κατάλογό σας: ${e.name}`);
+  },
   "dish-edit": b => openSheet(dishSheet(b.dataset.key)),
   "dish-del": b => {
     const key = b.dataset.key, e = allDishes().find(x => x.key === key);
@@ -1166,6 +1200,7 @@ document.addEventListener("toggle", e => {
   if (!t.matches) return;
   if (t.matches("[data-basket]")) { ui.basketOpen = t.open; saveUi(); }
   if (t.matches("[data-std-box]")) { ui.stdOpen = t.open; saveUi(); }
+  if (t.matches("[data-builtin-box]")) { ui.builtinOpen = t.open; saveUi(); }
   if (t.id === "catPicker") {
     if (t.open) pushLayer("picker");
     else if (t.dataset.silent) delete t.dataset.silent;
@@ -1312,6 +1347,7 @@ function dishSource() {
     const k = norm(t), e = m.get(k) || { text: t, n: 0 };
     e.n++; m.set(k, e);
   }
+  for (const [k, b] of BUILTIN) if (!m.has(k)) m.set(k, { text: b.name, n: 0 });
   return [...m.values()];
 }
 function productSource() {

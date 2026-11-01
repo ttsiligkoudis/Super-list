@@ -50,6 +50,7 @@ npm run dev
 
 - `public/index.html`, `styles.css`, `app.js`: η εφαρμογή
 - `public/templates.js`: τα σχέδια εκτύπωσης
+- `public/dishes.js`: ο βασικός κατάλογος με περίπου 100 συνηθισμένα φαγητά της ελληνικής κουζίνας, ίδιος για όλους τους χρήστες
 - `public/merge.js`: ο κανόνας συγχώνευσης, κοινός για κινητό και server
 - `public/sw.js`, `manifest.webmanifest`, εικονίδια: offline και εγκατάσταση
 

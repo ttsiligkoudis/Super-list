@@ -392,6 +392,16 @@ body.is-dragging .day input{pointer-events:none}
 .cat-grid.flat{padding:0;max-height:none}
 
 .chip-n{font-weight:500;opacity:.7;margin-left:2px}
+
+/* built-in Greek dishes */
+.builtin{margin-top:22px}
+.builtin .std-h{display:flex;align-items:center;gap:8px}
+.builtin .std-h .sw{width:5px;height:14px;border-radius:3px;background:var(--h)}
+.pill-wrap{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:0 12px 0 8px;border-radius:18px;border:1px solid var(--line);background:var(--bg);font-size:.86rem;font-weight:600}
+.pill .ic{width:16px;height:16px;color:var(--sea)}
+.pill:hover{border-color:var(--sea)}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
