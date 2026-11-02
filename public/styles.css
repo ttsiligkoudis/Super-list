@@ -488,6 +488,7 @@ body.is-dragging .day input{pointer-events:none}
 .rank li span:first-child{margin-right:8px}
 .rank li span.num{float:right}
 
+.add-past{margin-top:12px;min-height:44px}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

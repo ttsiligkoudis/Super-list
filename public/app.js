@@ -482,8 +482,8 @@ function listView() {
 function historyView() {
   if (ui.histView === "stats") return statsView();
   const lists = closedLists();
-  let h = histSeg();
-  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
+  let h = histSeg() + `<button type="button" class="btn ghost wide add-past" data-act="past-sheet">${ic("plus")}Πρόσθεσε παλιά ψώνια</button>`;
+  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις. Για ψώνια που έκανες πριν την εφαρμογή, πρόσθεσε μόνο ημερομηνία και ποσό.</p></div>`;
   const sm = storeMap();
   h += `<div class="trips">` + lists.map(l => {
     const items = itemsOf(l.id), got = items.filter(i => i.done).length;
@@ -504,7 +504,7 @@ function historyView() {
           <button class="btn ghost" type="submit">Αποθήκευση ποσού</button></form>
         ${body}
         <div class="trip-actions">
-          <button type="button" class="btn wide" data-act="repeat" data-id="${l.id}" data-mode="all">${ic("plus")}Νέα λίστα με όλα</button>
+          ${items.length ? `<button type="button" class="btn wide" data-act="repeat" data-id="${l.id}" data-mode="all">${ic("plus")}Νέα λίστα με όλα</button>` : ""}
           ${got < items.length ? `<button type="button" class="btn ghost wide" data-act="repeat" data-id="${l.id}" data-mode="missing">Νέα λίστα μόνο με όσα έλειψαν (${items.length - got})</button>` : ""}
           <div class="trip-minor">
             <button type="button" class="btn ghost" data-act="reopen" data-id="${l.id}">Άνοιγμα ξανά</button>
@@ -516,7 +516,7 @@ function historyView() {
       <button type="button" class="trip-head" data-act="hist-toggle" data-id="${l.id}" aria-expanded="${open}">
         <span class="datebox"><span class="d display num">${d.getDate()}</span><span class="m">${MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== today.getFullYear() ? " " + d.getFullYear() : ""}</span></span>
         <span class="label"><span class="name">${esc(l.name)}</span>
-          <span class="meta">${got} από ${items.length} αγοράστηκαν</span>
+          <span class="meta">${items.length ? `${got} από ${items.length} αγοράστηκαν` : "Μόνο ποσό"}</span>
           ${used.length ? `<span class="stores-used">${used.map(s => `<span class="tag" style="padding:0">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>`).join("")}</span>` : ""}
         </span>${l.amount ? `<span class="trip-amt num">${eur(l.amount)}</span>` : ""}${ic("down")}
       </button>${body}</article>`;
@@ -1047,19 +1047,32 @@ function endSession(message) {
 /* ----- ποσά και στατιστικά ----- */
 
 // Πεδία πληρωμής: ποσό και (προαιρετικά) κατάστημα. Προτείνει το κατάστημα με τα περισσότερα προϊόντα.
-function payFields(l) {
+function payFields(l, required = false) {
   const st = stores(), sm = storeMap();
   const cnt = {};
   itemsOf(l.id).forEach(i => { if (i.done && sm[i.store]) cnt[i.store] = (cnt[i.store] || 0) + 1; });
   const guess = l.payStore && sm[l.payStore] ? l.payStore : Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "";
   return `<div class="pay">
-    <label class="pay-l" for="payAmt">Πόσο πλήρωσες; <span class="muted">Προαιρετικό</span></label>
+    <label class="pay-l" for="payAmt">Πόσο πλήρωσες;${required ? "" : ` <span class="muted">Προαιρετικό</span>`}</label>
     <div class="money"><input class="field" id="payAmt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${l.amount ? l.amount.toFixed(2).replace(".", ",") : ""}"><span>€</span></div>
     ${st.length ? `<div class="radios" role="radiogroup" aria-label="Κατάστημα πληρωμής">
       <label><input type="radio" name="payStore" value=""${guess ? "" : " checked"}><span>Κανένα</span></label>
       ${st.map(s => `<label><input type="radio" name="payStore" value="${s.id}"${s.id === guess ? " checked" : ""}><span>${logo(s, "s")}${esc(s.name)}</span></label>`).join("")}
     </div>` : ""}
   </div>`;
+}
+function pastSheet() {
+  const t = new Date(), iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `<h2 class="sheet-title">Παλιά ψώνια</h2>
+    <p class="sheet-text small">Για ψώνια που έκανες χωρίς την εφαρμογή. Μετράνε στα Έξοδα.</p>
+    <form data-form="add-past" autocomplete="off">
+      <label class="fld">Ημερομηνία<input class="field" type="date" name="date" value="${iso(t)}" max="${iso(t)}" required></label>
+      ${payFields({ amount: null }, true)}
+      <div class="sheet-actions split">
+        <button class="btn ghost" type="submit" name="more" value="1">${ic("plus")}Και άλλο</button>
+        <button class="btn" type="submit">Αποθήκευση</button>
+      </div>
+    </form>`;
 }
 function readPay(l, root = document) {
   const a = root.querySelector("#payAmt");
@@ -1100,11 +1113,11 @@ function statsView() {
   const topMissed = [...missed.values()].sort((a, b) => b.n - a.n).slice(0, 5);
 
   const tile = (label, value, sub = "") => `<div class="tile"><span class="tile-l">${label}</span><span class="tile-v display num">${value}</span>${sub ? `<span class="tile-s">${sub}</span>` : ""}</div>`;
-  const diff = byMonth[prevYm] ? Math.round(((byMonth[curYm] || 0) - byMonth[prevYm]) / byMonth[prevYm] * 100) : null;
+  const diff = byMonth[prevYm] && byMonth[curYm] ? Math.round(((byMonth[curYm] || 0) - byMonth[prevYm]) / byMonth[prevYm] * 100) : null;
   return `${histSeg()}
     ${paid.length ? "" : `<p class="hint">Δεν έχεις γράψει ακόμα ποσά. Γράφεις ποσό όταν πατάς «Ολοκλήρωση» ή μέσα σε κάθε λίστα του Ιστορικού.</p>`}
     <div class="tiles">
-      ${tile(`${MONTHS[today.getMonth()]}`, eur(byMonth[curYm] || 0), diff === null ? "" : `${diff > 0 ? "+" : ""}${diff}% από τον ${MONTHS[prev.getMonth()]}`)}
+      ${tile(`${MONTHS[today.getMonth()]}`, eur(byMonth[curYm] || 0), diff === null ? "" : `${diff > 0 ? "+" : ""}${diff}% από τον ${MONTHS[prev.getMonth()].replace(/ς$/, "")}`)}
       ${tile(MONTHS[prev.getMonth()], eur(byMonth[prevYm] || 0))}
       ${tile("Μέσος όρος ανά ψώνια", eur(avg), paid.length ? `${paid.length} ${paid.length === 1 ? "λίστα" : "λίστες"} με ποσό` : "")}
       ${tile("Ψώνια αυτόν τον μήνα", tripsMonth, avgMonth ? `Μέσος μήνας ${eur(avgMonth)}` : "")}
@@ -1265,6 +1278,7 @@ const actions = {
   "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "aisle-toggle": b => { ui.collapsed = { ...(ui.collapsed || {}) }; ui.collapsed[b.dataset.c] = !ui.collapsed[b.dataset.c]; saveUi(); render(); },
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
+  "past-sheet": () => openSheet(pastSheet()),
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
   "prod-add": b => {
@@ -1437,6 +1451,28 @@ document.addEventListener("submit", e => {
   const name = (v.name || "").trim();
 
   if (kind === "auth") { submitAuth(f); return; }
+  if (kind === "add-past") {
+    const amount = parseAmount(f.querySelector("#payAmt").value);
+    const err = () => { const a = f.querySelector("#payAmt"); a.focus(); toast("Γράψε το ποσό που πλήρωσες"); };
+    if (!amount) return err();
+    const [y, m, d] = (v.date || "").split("-").map(Number);
+    if (!y) return;
+    const t = new Date(y, m - 1, d, 12).getTime();
+    const sel = f.querySelector('input[name="payStore"]:checked');
+    const store = sel ? sel.value : "";
+    const sm = storeMap();
+    const l = touch({ id: uid(), name: `Ψώνια ${d}/${m}${y !== today.getFullYear() ? "/" + y : ""}`, createdAt: t, closedAt: t, amount, payStore: store, manual: true });
+    doc.lists.push(l);
+    changed();
+    toast(`Προστέθηκε: ${eur(amount)}${sm[store] ? ` στο ${sm[store].name}` : ""}, ${d}/${m}`, { label: "Αναίρεση", run: () => { l.deleted = true; touch(l); changed(); } });
+    if (e.submitter && e.submitter.name === "more") {
+      openSheet(pastSheet());
+      const dt = $("#sheetPanel input[name=date]"); if (dt) dt.value = v.date;
+      const s2 = store && $(`#sheetPanel input[name="payStore"][value="${store}"]`); if (s2) s2.checked = true;
+      const a = $("#payAmt"); if (a) a.focus();
+    } else closeSheet();
+    return;
+  }
   if (kind === "set-pay") {
     const l = findById("lists", f.dataset.id);
     if (!l) return;
