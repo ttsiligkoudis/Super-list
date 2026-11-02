@@ -1067,6 +1067,37 @@ const actions = {
   "close-list": () => {
     const l = findById("lists", ui.listId);
     if (!l) return;
+    const left = itemsOf(l.id).filter(i => !i.done);
+    const got = itemsOf(l.id).length - left.length;
+    // Αν έμειναν προϊόντα, ρωτάμε αν θα πάνε σε νέα λίστα
+    if (left.length) {
+      openSheet(`<h2 class="sheet-title">Τελείωσαν τα ψώνια</h2>
+        <p class="sheet-text">Πήρες ${got} από ${got + left.length}. Έμειναν ${left.length} ${left.length === 1 ? "προϊόν" : "προϊόντα"}.</p>
+        <div class="sheet-actions">
+          <button type="button" class="btn basil" data-act="close-carry">${ic("check")}Κλείσε και πήγαινε τα ${left.length} σε νέα λίστα</button>
+          <button type="button" class="btn ghost" data-act="close-only">Κλείσε χωρίς νέα λίστα</button>
+        </div>`);
+      return;
+    }
+    actions["close-only"]();
+  },
+  "close-carry": () => {
+    const l = findById("lists", ui.listId);
+    if (!l) return;
+    const left = itemsOf(l.id).filter(i => !i.done);
+    const snap = snapshot("lists", [l]);
+    l.closedAt = now(); touch(l);
+    const nl = newList(left); // αντίγραφα: η παλιά λίστα κρατάει στο Ιστορικό ποια δεν αγοράστηκαν
+    closeSheet(); changed(); window.scrollTo(0, 0);
+    toast(`${left.length} προϊόντα πήγαν στη «${nl.name}»`, { label: "Αναίρεση", run: () => {
+      nl.deleted = true; touch(nl);
+      itemsOf(nl.id).forEach(i => { i.deleted = true; touch(i); });
+      restore(snap); ui.listId = l.id; saveUi(); changed();
+    } });
+  },
+  "close-only": () => {
+    const l = findById("lists", ui.listId);
+    if (!l) return;
     const snap = snapshot("lists", [l]);
     l.closedAt = now(); touch(l);
     ui.listId = null; saveUi();
