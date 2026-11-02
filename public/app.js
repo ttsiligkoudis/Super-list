@@ -456,22 +456,13 @@ function listView() {
   }
   if (!aisles) {
     aisles = scoped.length
-      ? `<div class="empty"><p>Όλα είναι στο καλάθι.${ui.filter === "all" ? " Αν τελείωσες, βάλε τη λίστα στο Ιστορικό." : ""}</p>
-         ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Τελείωσαν τα ψώνια</button>` : ""}</div>`
+      ? `<div class="empty"><p>Όλα είναι στο καλάθι.${ui.filter === "all" ? " Ολοκλήρωσε τα ψώνια για να μπει η λίστα στο Ιστορικό." : ""}</p>
+         ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Ολοκλήρωση ψωνίων</button>` : ""}</div>`
       : `<div class="empty"><p>${items.length ? "Κανένα προϊόν για αυτό το κατάστημα." : "Η λίστα είναι άδεια. Γράψε το πρώτο προϊόν στο πεδίο κάτω ή διάλεξε από τα βασικά προϊόντα."}</p>
          ${items.length ? "" : `<button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Βασικά προϊόντα</button>`}</div>`;
   }
   h += aisles;
 
-  const basket = scoped.filter(i => i.done);
-  if (basket.length) {
-    h += `<details class="basket" data-basket ${ui.basketOpen ? "open" : ""}>
-      <summary>${ic("down")}Στο καλάθι<span class="n">${basket.length}</span></summary>
-      <ul class="rows">${basket.map(i => rowHtml(i, sm, showStore, true)).join("")}</ul></details>`;
-  }
-  if (items.length && aisles.indexOf("data-act=\"close-list\"") < 0) {
-    h += `<div class="list-foot"><button type="button" class="btn ghost wide" data-act="close-list">Τελείωσαν τα ψώνια</button></div>`;
-  }
   return h;
 }
 
@@ -480,7 +471,7 @@ function listView() {
 function historyView() {
   const lists = closedLists();
   let h = `<header class="vhead"><h1 class="display">Ιστορικό</h1>${syncBadge()}</header>`;
-  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Τελείωσαν τα ψώνια». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
+  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση ψωνίων». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
   const sm = storeMap();
   h += `<div class="trips">` + lists.map(l => {
     const items = itemsOf(l.id), got = items.filter(i => i.done).length;
@@ -755,7 +746,7 @@ function listMenuSheet(l) {
       <button class="btn ghost" type="submit">Αποθήκευση</button>
     </form>
     <div class="choices menu">
-      ${row("close-list", "check", "Τελείωσαν τα ψώνια", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
+      ${row("close-list", "check", "Ολοκλήρωση ψωνίων", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
       ${row("products-sheet", "plus", "Βασικά προϊόντα", "Πρόσθεσε προϊόντα από τον κατάλογο με ένα πάτημα.")}
       ${done ? row("uncheck-all", "undo", "Άδειασμα καλαθιού", done === 1 ? "Το 1 προϊόν του καλαθιού ξαναμπαίνει στη λίστα." : `Τα ${done} προϊόντα του καλαθιού ξαναμπαίνουν στη λίστα.`) : ""}
       ${row("delete-list", "trash", "Διαγραφή λίστας", "", "bad", `data-id="${l.id}"`)}
@@ -767,7 +758,8 @@ function basketSheet() {
   const sm = storeMap();
   if (!items.length) return `<h2 class="sheet-title">Στο καλάθι</h2><p class="sheet-text">Το καλάθι είναι άδειο. Τσέκαρε προϊόντα στη λίστα και θα εμφανιστούν εδώ.</p>
     <button type="button" class="btn ghost" data-act="close-sheet">Εντάξει</button>`;
-  return `<h2 class="sheet-title">Στο καλάθι <span class="muted num">${items.length}</span></h2>
+  return `<div class="sheet-head"><h2 class="sheet-title">Στο καλάθι <span class="muted num">${items.length}</span></h2>
+    <button type="button" class="btn basil sm" data-act="close-list">${ic("check")}Ολοκλήρωση</button></div>
     <p class="sheet-text small">Πάτα ένα προϊόν για να το βγάλεις από το καλάθι.</p>
     <div class="choices">${items.map(i => {
       const s = sm[i.store];
@@ -1078,11 +1070,11 @@ const actions = {
     const got = itemsOf(l.id).length - left.length;
     // Αν έμειναν προϊόντα, ρωτάμε αν θα πάνε σε νέα λίστα
     if (left.length) {
-      openSheet(`<h2 class="sheet-title">Τελείωσαν τα ψώνια</h2>
-        <p class="sheet-text">Πήρες ${got} από ${got + left.length}. Έμειναν ${left.length} ${left.length === 1 ? "προϊόν" : "προϊόντα"}.</p>
+      openSheet(`<h2 class="sheet-title">Ολοκλήρωση ψωνίων</h2>
+        <p class="sheet-text">Πήρες ${got} από ${got + left.length}. ${left.length === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left.length} προϊόντα`}. Τι να γίνει με ${left.length === 1 ? "αυτό" : "αυτά"};</p>
         <div class="sheet-actions">
-          <button type="button" class="btn basil" data-act="close-carry">${ic("check")}Κλείσε και πήγαινε τα ${left.length} σε νέα λίστα</button>
-          <button type="button" class="btn ghost" data-act="close-only">Κλείσε χωρίς νέα λίστα</button>
+          <button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Να πάει σε νέα λίστα" : `Να πάνε τα ${left.length} σε νέα λίστα`}</button>
+          <button type="button" class="btn ghost" data-act="close-only">Να μείνουν μόνο στο Ιστορικό</button>
         </div>`);
       return;
     }

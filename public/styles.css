@@ -432,6 +432,11 @@ body.is-dragging .day input{pointer-events:none}
 .choice .name{font-weight:600}
 .choice:hover{background:color-mix(in srgb,var(--surface-2) 60%,transparent)}
 
+
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.btn.sm{min-height:40px;padding:0 14px;font-size:.92rem;border-radius:20px}
+.btn.sm .ic{width:18px;height:18px}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
