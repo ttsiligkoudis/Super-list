@@ -497,10 +497,12 @@ function historyView() {
       }
       body = `<div class="trip-body">${body}
         <div class="trip-actions">
-          <button type="button" class="btn" data-act="repeat" data-id="${l.id}" data-mode="all">Νέα λίστα με αυτά</button>
-          ${got < items.length ? `<button type="button" class="btn ghost" data-act="repeat" data-id="${l.id}" data-mode="missing">Μόνο όσα έλειψαν</button>` : ""}
-          <button type="button" class="btn text" data-act="reopen" data-id="${l.id}">Άνοιγμα ξανά</button>
-          <button type="button" class="btn text" style="color:var(--danger)" data-act="delete-list" data-id="${l.id}">Διαγραφή</button>
+          <button type="button" class="btn wide" data-act="repeat" data-id="${l.id}" data-mode="all">${ic("plus")}Νέα λίστα με όλα</button>
+          ${got < items.length ? `<button type="button" class="btn ghost wide" data-act="repeat" data-id="${l.id}" data-mode="missing">Νέα λίστα μόνο με όσα έλειψαν (${items.length - got})</button>` : ""}
+          <div class="trip-minor">
+            <button type="button" class="btn ghost" data-act="reopen" data-id="${l.id}">Άνοιγμα ξανά</button>
+            <button type="button" class="btn ghost danger-text" data-act="delete-list" data-id="${l.id}">${ic("trash")}Διαγραφή</button>
+          </div>
         </div></div>`;
     }
     return `<article class="trip">

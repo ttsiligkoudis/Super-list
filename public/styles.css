@@ -167,7 +167,11 @@ body.with-composer .toast{bottom:calc(var(--nav-h) + var(--composer-h) + env(saf
 .trip-body li .mk{width:18px;flex:none;font-weight:800;color:var(--basil)}
 .trip-body li.miss{color:var(--ink-2)}
 .trip-body li.miss .mk{color:var(--ink-2)}
-.trip-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.trip-actions{display:grid;gap:8px;margin-top:18px}
+.trip-minor{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.trip-minor .btn{min-height:44px;font-size:.92rem;padding:0 10px}
+.btn.danger-text{color:var(--danger)}
+.btn .ic{width:20px;height:20px}
 
 /* meals */
 .month-nav{display:flex;align-items:center;gap:4px;padding-block:18px 0}
