@@ -976,7 +976,7 @@ let authMode = "login", authBusy = false;
 function authView() {
   const reg = authMode === "register";
   return `<section class="auth">
-    <img class="auth-logo" src="/icon.svg" alt="" width="72" height="72">
+    <img class="auth-logo" src="/icon-v2.svg" alt="" width="72" height="72">
     <h1 class="display">Ψώνια & Μενού</h1>
     <p class="muted">Οι λίστες, τα καταστήματα και το πρόγραμμα φαγητού σου, σε κάθε συσκευή.</p>
     <div class="seg two" role="group" aria-label="Λογαριασμός">

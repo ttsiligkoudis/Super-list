@@ -1,0 +1,7 @@
+# Εικονίδια και εικόνα κοινοποίησης: σύντομη cache ώστε μια αλλαγή να φαίνεται γρήγορα
+/apple-touch-icon.png
+  Cache-Control: public, max-age=3600
+/favicon.ico
+  Cache-Control: public, max-age=3600
+/og-image-v2.png
+  Cache-Control: public, max-age=86400
