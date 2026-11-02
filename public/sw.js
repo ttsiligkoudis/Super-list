@@ -1,6 +1,6 @@
 // Offline support: the app shell is served from cache and refreshed in the background.
 // /api/* always goes to the network (the app keeps its own copy of the data).
-const CACHE = "psonia-v15";
+const CACHE = "psonia-v16";
 const SHELL = ["/", "/styles.css", "/app.js", "/merge.js", "/templates.js", "/dishes.js", "/products.js", "/manifest.webmanifest",
   "/icon-v2.svg", "/icon-v2-192.png", "/icon-v2-512.png", "/icon-v2-maskable-512.png", "/apple-touch-icon-v2.png", "/favicon.ico"];
 

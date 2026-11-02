@@ -416,6 +416,22 @@ body.is-dragging .day input{pointer-events:none}
 .pill.on{background:var(--basil);border-color:var(--basil);color:var(--basil-ink)}
 .pill.on .ic{color:var(--basil-ink)}
 
+
+/* list menu: one clean list of actions */
+.rename-row{display:flex !important;gap:8px}
+.rename-row .field{flex:1}
+.rename-row .btn{min-height:48px;padding:0 16px}
+.choices.menu{padding:0 12px}
+.choice-ic{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:var(--sea-soft);color:var(--sea)}
+.choice-ic .ic{width:20px;height:20px}
+.choice.good .choice-ic{background:color-mix(in srgb,var(--basil) 18%,transparent);color:var(--basil)}
+.choice.good .choice-ic .ic{color:var(--basil)}
+.choice.good .name{color:var(--basil);font-weight:700}
+.choice.bad .choice-ic{background:color-mix(in srgb,var(--danger) 14%,transparent)}
+.choice.bad .choice-ic .ic,.choice.bad .name{color:var(--danger)}
+.choice .name{font-weight:600}
+.choice:hover{background:color-mix(in srgb,var(--surface-2) 60%,transparent)}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }

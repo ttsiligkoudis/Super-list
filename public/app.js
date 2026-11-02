@@ -68,6 +68,7 @@ const ICONS = {
   ditto: '<path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
   wand: '<path d="M4 20L15 9"/><path d="M14 4l1 2.5L17.5 7 15 8l-1 2.5L13 8l-2.5-1L13 6z"/><path d="M19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
 // Στο κινητό ο ορθογράφος του browser υπογραμμίζει σωστές λέξεις (το πληκτρολόγιο διορθώνει ήδη),
@@ -744,16 +745,20 @@ function productsSheet() {
 }
 
 function listMenuSheet(l) {
+  const its = itemsOf(l.id), done = its.filter(i => i.done).length, left = its.length - done;
+  const row = (act, icon, title, meta, cls = "", extra = "") => `<button type="button" class="choice ${cls}" data-act="${act}" ${extra}>
+    <span class="choice-ic">${ic(icon)}</span><span class="label"><span class="name">${title}</span>${meta ? `<span class="meta">${meta}</span>` : ""}</span></button>`;
   return `<h2 class="sheet-title">Επιλογές λίστας</h2>
-    <form data-form="rename-list" data-id="${l.id}" autocomplete="off">
-      <label class="fld">Όνομα<input class="field" id="lName" name="name" value="${esc(l.name)}" required maxlength="40"></label>
-      <button class="btn ghost" type="submit">Μετονομασία</button>
+    <form class="rename-row" data-form="rename-list" data-id="${l.id}" autocomplete="off">
+      <label class="sr" for="lName">Όνομα λίστας</label>
+      <input class="field" id="lName" name="name" value="${esc(l.name)}" required maxlength="40" spellcheck="${SPELL}">
+      <button class="btn ghost" type="submit">Αποθήκευση</button>
     </form>
-    <div class="sheet-actions">
-      <button type="button" class="btn basil" data-act="close-list">${ic("check")}Τελείωσαν τα ψώνια</button>
-      <button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Πρόσθεσε από τα βασικά προϊόντα</button>
-      <button type="button" class="btn ghost" data-act="uncheck-all">Άδειασμα καλαθιού</button>
-      <button type="button" class="btn text" style="color:var(--danger)" data-act="delete-list" data-id="${l.id}">Διαγραφή λίστας</button>
+    <div class="choices menu">
+      ${row("close-list", "check", "Τελείωσαν τα ψώνια", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
+      ${row("products-sheet", "plus", "Βασικά προϊόντα", "Πρόσθεσε προϊόντα από τον κατάλογο με ένα πάτημα.")}
+      ${done ? row("uncheck-all", "undo", "Άδειασμα καλαθιού", done === 1 ? "Το 1 προϊόν του καλαθιού ξαναμπαίνει στη λίστα." : `Τα ${done} προϊόντα του καλαθιού ξαναμπαίνουν στη λίστα.`) : ""}
+      ${row("delete-list", "trash", "Διαγραφή λίστας", "", "bad", `data-id="${l.id}"`)}
     </div>`;
 }
 
