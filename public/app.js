@@ -68,6 +68,8 @@ const ICONS = {
   ditto: '<path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
   wand: '<path d="M4 20L15 9"/><path d="M14 4l1 2.5L17.5 7 15 8l-1 2.5L13 8l-2.5-1L13 6z"/><path d="M19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
@@ -155,6 +157,8 @@ function parseQuick(s) {
   if (m) return { name: m[3], qty: m[2] ? `${m[1]} ${m[2]}` : "×" + m[1] };
   return { name: s, qty: "" };
 }
+const parseAmount = v => { const n = parseFloat(String(v || "").replace(/[^\d,.-]/g, "").replace(",", ".")); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
+const eur = n => (n || 0).toLocaleString("el-GR", { style: "currency", currency: "EUR" });
 const cap = s => s.charAt(0).toLocaleUpperCase("el") + s.slice(1);
 
 /* ---------- state ---------- */
@@ -451,8 +455,10 @@ function listView() {
     const g = scoped.filter(i => catOf(i) === c);
     const todo = g.filter(i => !i.done);
     if (!todo.length) continue;
-    aisles += `<section class="aisle"><h2 class="aisle-sign"><span class="sw" style="--h:${hue}"></span>${name}<span class="n">${g.length - todo.length} από ${g.length}</span></h2>
-      <ul class="rows">${todo.map(i => rowHtml(i, sm, showStore, false)).join("")}</ul></section>`;
+    const shut = !!(ui.collapsed || {})[c];
+    aisles += `<section class="aisle${shut ? " shut" : ""}"><h2 class="aisle-sign"><button type="button" class="aisle-btn" data-act="aisle-toggle" data-c="${c}" aria-expanded="${!shut}">
+      <span class="sw" style="--h:${hue}"></span><span class="aisle-name">${name}</span><span class="n">${shut ? `${todo.length} ${todo.length === 1 ? "έμεινε" : "έμειναν"}` : `${g.length - todo.length} από ${g.length}`}</span>${ic("down")}</button></h2>
+      ${shut ? "" : `<ul class="rows">${todo.map(i => rowHtml(i, sm, showStore, false)).join("")}</ul>`}</section>`;
   }
   if (!aisles) {
     aisles = scoped.length
@@ -460,6 +466,11 @@ function listView() {
          ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Ολοκλήρωση</button>` : ""}</div>`
       : `<div class="empty"><p>${items.length ? "Κανένα προϊόν για αυτό το κατάστημα." : "Η λίστα είναι άδεια. Γράψε το πρώτο προϊόν στο πεδίο κάτω ή διάλεξε από τα βασικά προϊόντα."}</p>
          ${items.length ? "" : `<button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Βασικά προϊόντα</button>`}</div>`;
+  }
+  if (aisles.includes('data-act="aisle-toggle"')) {
+    const cats = CATS.map(([c]) => c).filter(c => aisles.includes(`data-c="${c}"`));
+    const allShut = cats.every(c => (ui.collapsed || {})[c]);
+    h += `<div class="aisle-tools"><button type="button" class="btn text" data-act="aisles-all" data-v="${allShut ? "open" : "shut"}">${ic(allShut ? "down" : "up")}${allShut ? "Άνοιγμα όλων" : "Σύμπτυξη όλων"}</button></div>`;
   }
   h += aisles;
 
@@ -469,8 +480,9 @@ function listView() {
 /* ----- history tab ----- */
 
 function historyView() {
+  if (ui.histView === "stats") return statsView();
   const lists = closedLists();
-  let h = `<header class="vhead"><h1 class="display">Ιστορικό</h1>${syncBadge()}</header>`;
+  let h = histSeg();
   if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
   const sm = storeMap();
   h += `<div class="trips">` + lists.map(l => {
@@ -487,7 +499,10 @@ function historyView() {
           <span class="mk" aria-label="${i.done ? "Αγοράστηκε" : "Δεν αγοράστηκε"}">${i.done ? "✓" : "–"}</span>
           <span>${esc(i.name)}${i.qty ? ` <span class="muted">${esc(i.qty)}</span>` : ""}${sm[i.store] ? ` <span class="muted">(${esc(sm[i.store].name)})</span>` : ""}</span></li>`).join("") + `</ul>`;
       }
-      body = `<div class="trip-body">${body}
+      body = `<div class="trip-body">
+        <form class="trip-pay" data-form="set-pay" data-id="${l.id}" autocomplete="off">${payFields(l)}
+          <button class="btn ghost" type="submit">Αποθήκευση ποσού</button></form>
+        ${body}
         <div class="trip-actions">
           <button type="button" class="btn wide" data-act="repeat" data-id="${l.id}" data-mode="all">${ic("plus")}Νέα λίστα με όλα</button>
           ${got < items.length ? `<button type="button" class="btn ghost wide" data-act="repeat" data-id="${l.id}" data-mode="missing">Νέα λίστα μόνο με όσα έλειψαν (${items.length - got})</button>` : ""}
@@ -503,7 +518,7 @@ function historyView() {
         <span class="label"><span class="name">${esc(l.name)}</span>
           <span class="meta">${got} από ${items.length} αγοράστηκαν</span>
           ${used.length ? `<span class="stores-used">${used.map(s => `<span class="tag" style="padding:0">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>`).join("")}</span>` : ""}
-        </span>${ic("down")}
+        </span>${l.amount ? `<span class="trip-amt num">${eur(l.amount)}</span>` : ""}${ic("down")}
       </button>${body}</article>`;
   }).join("") + `</div>`;
   return h;
@@ -1029,6 +1044,95 @@ function endSession(message) {
   if (message) { const e = $("#authErr"); if (e) e.textContent = message; }
 }
 
+/* ----- ποσά και στατιστικά ----- */
+
+// Πεδία πληρωμής: ποσό και (προαιρετικά) κατάστημα. Προτείνει το κατάστημα με τα περισσότερα προϊόντα.
+function payFields(l) {
+  const st = stores(), sm = storeMap();
+  const cnt = {};
+  itemsOf(l.id).forEach(i => { if (i.done && sm[i.store]) cnt[i.store] = (cnt[i.store] || 0) + 1; });
+  const guess = l.payStore && sm[l.payStore] ? l.payStore : Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "";
+  return `<div class="pay">
+    <label class="pay-l" for="payAmt">Πόσο πλήρωσες; <span class="muted">Προαιρετικό</span></label>
+    <div class="money"><input class="field" id="payAmt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${l.amount ? l.amount.toFixed(2).replace(".", ",") : ""}"><span>€</span></div>
+    ${st.length ? `<div class="radios" role="radiogroup" aria-label="Κατάστημα πληρωμής">
+      <label><input type="radio" name="payStore" value=""${guess ? "" : " checked"}><span>Κανένα</span></label>
+      ${st.map(s => `<label><input type="radio" name="payStore" value="${s.id}"${s.id === guess ? " checked" : ""}><span>${logo(s, "s")}${esc(s.name)}</span></label>`).join("")}
+    </div>` : ""}
+  </div>`;
+}
+function readPay(l, root = document) {
+  const a = root.querySelector("#payAmt");
+  if (!a) return;
+  l.amount = parseAmount(a.value);
+  const s = root.querySelector('input[name="payStore"]:checked');
+  l.payStore = l.amount && s ? s.value : "";
+}
+
+const ymOf = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+function statsView() {
+  const lists = closedLists();
+  const paid = lists.filter(l => l.amount > 0);
+  const sm = storeMap();
+  const curYm = ymOf(now()), prev = new Date(today.getFullYear(), today.getMonth() - 1, 1), prevYm = ymOf(prev);
+  const byMonth = {};
+  paid.forEach(l => { const k = ymOf(l.closedAt); byMonth[k] = (byMonth[k] || 0) + l.amount; });
+  const tripsMonth = lists.filter(l => ymOf(l.closedAt) === curYm).length;
+  const avg = paid.length ? paid.reduce((a, l) => a + l.amount, 0) / paid.length : 0;
+  // τελευταίοι 12 μήνες
+  const months = [];
+  for (let k = 11; k >= 0; k--) { const d = new Date(today.getFullYear(), today.getMonth() - k, 1); months.push({ k: ymOf(d), label: MONTHS_SHORT[d.getMonth()], v: byMonth[ymOf(d)] || 0 }); }
+  const max = Math.max(1, ...months.map(m => m.v));
+  const withData = months.filter(m => m.v > 0);
+  const avgMonth = withData.length ? withData.reduce((a, m) => a + m.v, 0) / withData.length : 0;
+  // ανά κατάστημα
+  const perStore = {};
+  paid.forEach(l => { const k = sm[l.payStore] ? l.payStore : ""; perStore[k] = perStore[k] || { v: 0, n: 0 }; perStore[k].v += l.amount; perStore[k].n++; });
+  const storeRows = Object.entries(perStore).sort((a, b) => b[1].v - a[1].v);
+  const storeMax = Math.max(1, ...storeRows.map(([, x]) => x.v));
+  // προϊόντα
+  const bought = new Map(), missed = new Map();
+  lists.forEach(l => itemsOf(l.id).forEach(i => {
+    const m = i.done ? bought : missed, k = norm(i.name), e = m.get(k) || { name: i.name, n: 0 };
+    e.n++; m.set(k, e);
+  }));
+  const topBought = [...bought.values()].sort((a, b) => b.n - a.n).slice(0, 10);
+  const topMissed = [...missed.values()].sort((a, b) => b.n - a.n).slice(0, 5);
+
+  const tile = (label, value, sub = "") => `<div class="tile"><span class="tile-l">${label}</span><span class="tile-v display num">${value}</span>${sub ? `<span class="tile-s">${sub}</span>` : ""}</div>`;
+  const diff = byMonth[prevYm] ? Math.round(((byMonth[curYm] || 0) - byMonth[prevYm]) / byMonth[prevYm] * 100) : null;
+  return `${histSeg()}
+    ${paid.length ? "" : `<p class="hint">Δεν έχεις γράψει ακόμα ποσά. Γράφεις ποσό όταν πατάς «Ολοκλήρωση» ή μέσα σε κάθε λίστα του Ιστορικού.</p>`}
+    <div class="tiles">
+      ${tile(`${MONTHS[today.getMonth()]}`, eur(byMonth[curYm] || 0), diff === null ? "" : `${diff > 0 ? "+" : ""}${diff}% από τον ${MONTHS[prev.getMonth()]}`)}
+      ${tile(MONTHS[prev.getMonth()], eur(byMonth[prevYm] || 0))}
+      ${tile("Μέσος όρος ανά ψώνια", eur(avg), paid.length ? `${paid.length} ${paid.length === 1 ? "λίστα" : "λίστες"} με ποσό` : "")}
+      ${tile("Ψώνια αυτόν τον μήνα", tripsMonth, avgMonth ? `Μέσος μήνας ${eur(avgMonth)}` : "")}
+    </div>
+    <section class="stat-card"><h2>Έξοδα ανά μήνα</h2>
+      <div class="bars" role="img" aria-label="${esc(withData.map(m => `${m.label}: ${eur(m.v)}`).join(", ") || "Χωρίς ποσά")}">
+        ${months.map(m => `<div class="bar-col${m.k === curYm ? " now" : ""}"><span class="bar-v num">${m.v ? Math.round(m.v) : ""}</span><span class="bar" style="height:${m.v / max * 100}%"></span><span class="bar-l">${m.label}</span></div>`).join("")}
+      </div>
+    </section>
+    ${storeRows.length ? `<section class="stat-card"><h2>Ανά κατάστημα</h2>
+      ${storeRows.map(([id, x]) => { const s = sm[id]; return `<div class="hrow">
+        <span class="hrow-l">${s ? logo(s, "s") : ""}${s ? esc(s.name) : "Χωρίς κατάστημα"}</span>
+        <span class="hrow-bar"><i style="width:${x.v / storeMax * 100}%;--c:${s ? safeColor(s.color) : "var(--ink-2)"}"></i></span>
+        <span class="hrow-v num">${eur(x.v)}<small>${x.n}×, μ.ό. ${eur(x.v / x.n)}</small></span></div>`; }).join("")}
+    </section>` : ""}
+    ${topBought.length ? `<section class="stat-card"><h2>Αγοράζεις πιο συχνά</h2>
+      <ol class="rank">${topBought.map(e => `<li><span>${esc(e.name)}</span><span class="num muted">${e.n}×</span></li>`).join("")}</ol></section>` : ""}
+    ${topMissed.length ? `<section class="stat-card"><h2>Μένουν συχνά χωρίς να αγοραστούν</h2>
+      <ol class="rank">${topMissed.map(e => `<li><span>${esc(e.name)}</span><span class="num muted">${e.n}×</span></li>`).join("")}</ol></section>` : ""}`;
+}
+function histSeg() {
+  return `<header class="vhead"><h1 class="display">Ιστορικό</h1>${syncBadge()}</header>
+    <div class="seg two" role="group" aria-label="Προβολή">
+      <button type="button" data-act="hist-view" data-v="lists" aria-pressed="${ui.histView !== "stats"}">Λίστες</button>
+      <button type="button" data-act="hist-view" data-v="stats" aria-pressed="${ui.histView === "stats"}">${ic("chart")}Έξοδα</button>
+    </div>`;
+}
+
 /* ---------- actions ---------- */
 
 function newList(items = []) {
@@ -1068,23 +1172,21 @@ const actions = {
     if (!l) return;
     const left = itemsOf(l.id).filter(i => !i.done);
     const got = itemsOf(l.id).length - left.length;
-    // Αν έμειναν προϊόντα, ρωτάμε αν θα πάνε σε νέα λίστα
-    if (left.length) {
-      openSheet(`<h2 class="sheet-title">Ολοκλήρωση</h2>
-        <p class="sheet-text">Πήρες ${got} από ${got + left.length}. ${left.length === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left.length} προϊόντα`}. Τι να γίνει με ${left.length === 1 ? "αυτό" : "αυτά"};</p>
-        <div class="sheet-actions">
-          <button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Μεταφορά σε νέα λίστα" : `Μεταφορά των ${left.length} σε νέα λίστα`}</button>
-          <button type="button" class="btn ghost" data-act="close-only">Να μείνουν μόνο στο Ιστορικό</button>
-        </div>`);
-      return;
-    }
-    actions["close-only"]();
+    openSheet(`<h2 class="sheet-title">Ολοκλήρωση</h2>
+      <p class="sheet-text">Πήρες ${got} από ${got + left.length}.${left.length ? ` ${left.length === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left.length} προϊόντα`}.` : ""}</p>
+      ${payFields(l)}
+      <div class="sheet-actions">
+        ${left.length ? `<button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Μεταφορά σε νέα λίστα" : `Μεταφορά των ${left.length} σε νέα λίστα`}</button>
+        <button type="button" class="btn ghost" data-act="close-only">Χωρίς μεταφορά</button>`
+        : `<button type="button" class="btn basil" data-act="close-only">${ic("check")}Ολοκλήρωση</button>`}
+      </div>`);
   },
   "close-carry": () => {
     const l = findById("lists", ui.listId);
     if (!l) return;
     const left = itemsOf(l.id).filter(i => !i.done);
     const snap = [...snapshot("lists", [l]), ...snapshot("items", left)];
+    readPay(l);
     l.closedAt = now(); touch(l);
     // Μετακίνηση (όχι αντιγραφή): όσα έμειναν φεύγουν από την παλιά λίστα, που κρατάει στο Ιστορικό μόνο όσα αγοράστηκαν
     const nl = newList();
@@ -1099,6 +1201,7 @@ const actions = {
     const l = findById("lists", ui.listId);
     if (!l) return;
     const snap = snapshot("lists", [l]);
+    readPay(l);
     l.closedAt = now(); touch(l);
     ui.listId = null; saveUi();
     closeSheet(); changed(); window.scrollTo(0, 0);
@@ -1160,6 +1263,9 @@ const actions = {
     openSheet(basketSheet());
   },
   "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
+  "aisle-toggle": b => { ui.collapsed = { ...(ui.collapsed || {}) }; ui.collapsed[b.dataset.c] = !ui.collapsed[b.dataset.c]; saveUi(); render(); },
+  "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
+  "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
   "prod-add": b => {
     if (!ui.listId || b.classList.contains("on")) return;
@@ -1331,6 +1437,13 @@ document.addEventListener("submit", e => {
   const name = (v.name || "").trim();
 
   if (kind === "auth") { submitAuth(f); return; }
+  if (kind === "set-pay") {
+    const l = findById("lists", f.dataset.id);
+    if (!l) return;
+    readPay(l, f); touch(l); changed();
+    toast(l.amount ? `Αποθηκεύτηκε: ${eur(l.amount)}` : "Το ποσό σβήστηκε");
+    return;
+  }
   if (kind === "add-dish") {
     if (!name) return;
     const k = dishKey(name), ex = doc.meals[k];
