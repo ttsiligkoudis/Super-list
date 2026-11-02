@@ -489,7 +489,8 @@ function historyView() {
     const items = itemsOf(l.id), got = items.filter(i => i.done).length;
     const open = ui.histOpen === l.id;
     const d = new Date(l.closedAt);
-    const used = [...new Set(items.map(i => i.store).filter(s => sm[s]))].map(s => sm[s]);
+    // καταστήματα: πρώτα αυτό που πληρώθηκε, μετά όσα είχαν τα προϊόντα
+    const used = [...new Set([l.payStore, ...items.filter(i => i.done).map(i => i.store)].filter(s => sm[s]))].map(s => sm[s]);
     let body = "";
     if (open) {
       for (const [c, name, hue] of CATS) {
@@ -517,8 +518,11 @@ function historyView() {
         <span class="datebox"><span class="d display num">${d.getDate()}</span><span class="m">${MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== today.getFullYear() ? " " + d.getFullYear() : ""}</span></span>
         <span class="label"><span class="name">${esc(l.name)}</span>
           <span class="meta">${items.length ? `${got} από ${items.length} αγοράστηκαν` : "Μόνο ποσό"}</span>
-          ${used.length ? `<span class="stores-used">${used.map(s => `<span class="tag" style="padding:0">${logo(s, "s")}<span class="tag-name">${esc(s.name)}</span></span>`).join("")}</span>` : ""}
-        </span>${l.amount ? `<span class="trip-amt num">${eur(l.amount)}</span>` : ""}${ic("down")}
+        </span>
+        ${l.amount || used.length ? `<span class="trip-side">
+          ${l.amount ? `<span class="trip-amt num">${eur(l.amount)}</span>` : ""}
+          ${used.length ? `<span class="trip-stores" title="${esc(used.map(s => s.name).join(", "))}">${used.slice(0, 3).map(s => logo(s, "m")).join("")}${used.length === 1 ? `<span class="trip-store-name">${esc(used[0].name)}</span>` : ""}</span>` : ""}
+        </span>` : ""}${ic("down")}
       </button>${body}</article>`;
   }).join("") + `</div>`;
   return h;

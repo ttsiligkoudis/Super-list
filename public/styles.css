@@ -489,6 +489,10 @@ body.is-dragging .day input{pointer-events:none}
 .rank li span.num{float:right}
 
 .add-past{margin-top:12px;min-height:44px}
+.trip-side{display:grid;justify-items:end;gap:5px;flex:none}
+.trip-stores{display:flex;align-items:center;gap:4px}
+.trip-stores .logo.m{width:24px;height:24px;border-radius:7px;font-size:.75rem}
+.trip-store-name{font-size:.78rem;color:var(--ink-2);font-weight:600;margin-left:3px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
