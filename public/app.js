@@ -746,7 +746,7 @@ function listMenuSheet(l) {
       <button class="btn ghost" type="submit">Αποθήκευση</button>
     </form>
     <div class="choices menu">
-      ${row("close-list", "check", "Ολοκλήρωση", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
+      ${row("close-list", "check", "Ολοκλήρωση", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα μεταφέρεις σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
       ${row("products-sheet", "plus", "Βασικά προϊόντα", "Πρόσθεσε προϊόντα από τον κατάλογο με ένα πάτημα.")}
       ${done ? row("uncheck-all", "undo", "Άδειασμα καλαθιού", done === 1 ? "Το 1 προϊόν του καλαθιού ξαναμπαίνει στη λίστα." : `Τα ${done} προϊόντα του καλαθιού ξαναμπαίνουν στη λίστα.`) : ""}
       ${row("delete-list", "trash", "Διαγραφή λίστας", "", "bad", `data-id="${l.id}"`)}
@@ -1073,7 +1073,7 @@ const actions = {
       openSheet(`<h2 class="sheet-title">Ολοκλήρωση</h2>
         <p class="sheet-text">Πήρες ${got} από ${got + left.length}. ${left.length === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left.length} προϊόντα`}. Τι να γίνει με ${left.length === 1 ? "αυτό" : "αυτά"};</p>
         <div class="sheet-actions">
-          <button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Να πάει σε νέα λίστα" : `Να πάνε τα ${left.length} σε νέα λίστα`}</button>
+          <button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Μεταφορά σε νέα λίστα" : `Μεταφορά των ${left.length} σε νέα λίστα`}</button>
           <button type="button" class="btn ghost" data-act="close-only">Να μείνουν μόνο στο Ιστορικό</button>
         </div>`);
       return;
@@ -1084,13 +1084,14 @@ const actions = {
     const l = findById("lists", ui.listId);
     if (!l) return;
     const left = itemsOf(l.id).filter(i => !i.done);
-    const snap = snapshot("lists", [l]);
+    const snap = [...snapshot("lists", [l]), ...snapshot("items", left)];
     l.closedAt = now(); touch(l);
-    const nl = newList(left); // αντίγραφα: η παλιά λίστα κρατάει στο Ιστορικό ποια δεν αγοράστηκαν
+    // Μετακίνηση (όχι αντιγραφή): όσα έμειναν φεύγουν από την παλιά λίστα, που κρατάει στο Ιστορικό μόνο όσα αγοράστηκαν
+    const nl = newList();
+    left.forEach((i, n) => { i.listId = nl.id; i.order = n + 1; touch(i); });
     closeSheet(); changed(); window.scrollTo(0, 0);
-    toast(`${left.length} προϊόντα πήγαν στη «${nl.name}»`, { label: "Αναίρεση", run: () => {
+    toast(`${left.length} προϊόντα μεταφέρθηκαν στη «${nl.name}»`, { label: "Αναίρεση", run: () => {
       nl.deleted = true; touch(nl);
-      itemsOf(nl.id).forEach(i => { i.deleted = true; touch(i); });
       restore(snap); ui.listId = l.id; saveUi(); changed();
     } });
   },
