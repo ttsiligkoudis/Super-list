@@ -456,8 +456,8 @@ function listView() {
   }
   if (!aisles) {
     aisles = scoped.length
-      ? `<div class="empty"><p>Όλα είναι στο καλάθι.${ui.filter === "all" ? " Ολοκλήρωσε τα ψώνια για να μπει η λίστα στο Ιστορικό." : ""}</p>
-         ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Ολοκλήρωση ψωνίων</button>` : ""}</div>`
+      ? `<div class="empty"><p>Όλα είναι στο καλάθι.${ui.filter === "all" ? " Πάτα «Ολοκλήρωση» για να μπει η λίστα στο Ιστορικό." : ""}</p>
+         ${ui.filter === "all" ? `<button type="button" class="btn basil" data-act="close-list">${ic("check")}Ολοκλήρωση</button>` : ""}</div>`
       : `<div class="empty"><p>${items.length ? "Κανένα προϊόν για αυτό το κατάστημα." : "Η λίστα είναι άδεια. Γράψε το πρώτο προϊόν στο πεδίο κάτω ή διάλεξε από τα βασικά προϊόντα."}</p>
          ${items.length ? "" : `<button type="button" class="btn ghost" data-act="products-sheet">${ic("plus")}Βασικά προϊόντα</button>`}</div>`;
   }
@@ -471,7 +471,7 @@ function listView() {
 function historyView() {
   const lists = closedLists();
   let h = `<header class="vhead"><h1 class="display">Ιστορικό</h1>${syncBadge()}</header>`;
-  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση ψωνίων». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
+  if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις.</p></div>`;
   const sm = storeMap();
   h += `<div class="trips">` + lists.map(l => {
     const items = itemsOf(l.id), got = items.filter(i => i.done).length;
@@ -746,7 +746,7 @@ function listMenuSheet(l) {
       <button class="btn ghost" type="submit">Αποθήκευση</button>
     </form>
     <div class="choices menu">
-      ${row("close-list", "check", "Ολοκλήρωση ψωνίων", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
+      ${row("close-list", "check", "Ολοκλήρωση", left && its.length ? `Η λίστα πάει στο Ιστορικό. ${left === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left} προϊόντα`}, μπορείς να τα πας σε νέα λίστα.` : "Η λίστα πάει στο Ιστορικό.", "good")}
       ${row("products-sheet", "plus", "Βασικά προϊόντα", "Πρόσθεσε προϊόντα από τον κατάλογο με ένα πάτημα.")}
       ${done ? row("uncheck-all", "undo", "Άδειασμα καλαθιού", done === 1 ? "Το 1 προϊόν του καλαθιού ξαναμπαίνει στη λίστα." : `Τα ${done} προϊόντα του καλαθιού ξαναμπαίνουν στη λίστα.`) : ""}
       ${row("delete-list", "trash", "Διαγραφή λίστας", "", "bad", `data-id="${l.id}"`)}
@@ -1070,7 +1070,7 @@ const actions = {
     const got = itemsOf(l.id).length - left.length;
     // Αν έμειναν προϊόντα, ρωτάμε αν θα πάνε σε νέα λίστα
     if (left.length) {
-      openSheet(`<h2 class="sheet-title">Ολοκλήρωση ψωνίων</h2>
+      openSheet(`<h2 class="sheet-title">Ολοκλήρωση</h2>
         <p class="sheet-text">Πήρες ${got} από ${got + left.length}. ${left.length === 1 ? "Έμεινε 1 προϊόν" : `Έμειναν ${left.length} προϊόντα`}. Τι να γίνει με ${left.length === 1 ? "αυτό" : "αυτά"};</p>
         <div class="sheet-actions">
           <button type="button" class="btn basil" data-act="close-carry">${ic("plus")}${left.length === 1 ? "Να πάει σε νέα λίστα" : `Να πάνε τα ${left.length} σε νέα λίστα`}</button>
