@@ -488,7 +488,27 @@ body.is-dragging .day input{pointer-events:none}
 .rank li span:first-child{margin-right:8px}
 .rank li span.num{float:right}
 
-.add-past{margin-top:12px;min-height:44px}
+.add-past{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.add-past .btn{min-height:44px;justify-content:center}
+.trip-body li .li-price{margin-left:auto;padding-left:8px;white-space:nowrap;color:var(--ink-2);font-size:.9rem}
+.rcpt-pick{margin:6px 0 14px}
+.rcpt-pick .btn{cursor:pointer}
+.rcpt-paste summary{cursor:pointer;color:var(--sea);font-weight:600;padding:6px 0}
+.rcpt-paste form{display:grid;gap:10px;margin-top:8px}
+.rcpt-paste textarea{min-height:120px;font:inherit;font-size:.9rem;resize:vertical}
+.rcpt-err{background:color-mix(in srgb,var(--citrus,#e2a400) 18%,transparent);border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:.92rem}
+.rcpt-prog{padding:18px 0}
+.rcpt-prog p{margin:0 0 10px;font-weight:600}
+.rcpt-prog .bar{height:8px;border-radius:99px;background:color-mix(in srgb,var(--ink-2) 18%,transparent);overflow:hidden}
+.rcpt-prog .bar span{display:block;height:100%;background:var(--sea);border-radius:inherit;transition:width .3s}
+.rcpt{display:grid;gap:14px}
+.rcpt-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:4px}
+.rcpt-head h3{margin:0;font-size:1rem}
+.rcpt-items{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rcpt-items li{display:grid;grid-template-columns:minmax(0,1fr) 96px 40px;gap:6px;align-items:center}
+.rcpt-items .field{min-height:42px;padding:8px 10px;font-size:.95rem}
+.money.sm .field{font-size:.95rem;padding-right:26px;text-align:right}
+.money.sm span{right:9px}
 .trip-side{display:grid;justify-items:end;gap:5px;flex:none}
 .trip-stores{display:flex;align-items:center;gap:4px}
 .trip-stores .logo.m{width:24px;height:24px;border-radius:7px;font-size:.75rem}

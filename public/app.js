@@ -2,6 +2,7 @@ import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
 import { BUILTIN_PRODUCTS } from "./products.js";
+import { parseReceipt, matchProduct, niceName } from "./receipt.js";
 
 /* ---------- constants ---------- */
 
@@ -71,6 +72,8 @@ const ICONS = {
   up: '<path d="M6 15l6-6 6 6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
+  receipt: '<path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
 // Στο κινητό ο ορθογράφος του browser υπογραμμίζει σωστές λέξεις (το πληκτρολόγιο διορθώνει ήδη),
@@ -482,7 +485,9 @@ function listView() {
 function historyView() {
   if (ui.histView === "stats") return statsView();
   const lists = closedLists();
-  let h = histSeg() + `<button type="button" class="btn ghost wide add-past" data-act="past-sheet">${ic("plus")}Πρόσθεσε παλιά ψώνια</button>`;
+  let h = histSeg() + `<div class="add-past">
+    <button type="button" class="btn ghost" data-act="past-sheet">${ic("plus")}Μόνο ποσό</button>
+    <button type="button" class="btn ghost" data-act="rcpt-sheet">${ic("receipt")}Απόδειξη</button></div>`;
   if (!lists.length) return h + `<div class="empty"><p>Εδώ μπαίνουν οι λίστες όταν πατάς «Ολοκλήρωση». Από εδώ μπορείς να τις ξαναχρησιμοποιήσεις. Για ψώνια που έκανες πριν την εφαρμογή, πρόσθεσε μόνο ημερομηνία και ποσό.</p></div>`;
   const sm = storeMap();
   h += `<div class="trips">` + lists.map(l => {
@@ -498,11 +503,11 @@ function historyView() {
         if (!g.length) continue;
         body += `<h3><span class="sw" style="--h:${hue}"></span>${name}</h3><ul>` + g.map(i => `<li class="${i.done ? "" : "miss"}">
           <span class="mk" aria-label="${i.done ? "Αγοράστηκε" : "Δεν αγοράστηκε"}">${i.done ? "✓" : "–"}</span>
-          <span>${esc(i.name)}${i.qty ? ` <span class="muted">${esc(i.qty)}</span>` : ""}${sm[i.store] ? ` <span class="muted">(${esc(sm[i.store].name)})</span>` : ""}</span></li>`).join("") + `</ul>`;
+          <span>${esc(i.name)}${i.qty ? ` <span class="muted">${esc(i.qty)}</span>` : ""}${sm[i.store] && i.store !== l.payStore ? ` <span class="muted">(${esc(sm[i.store].name)})</span>` : ""}</span>${i.price ? `<span class="li-price num">${eur(i.price)}</span>` : ""}</li>`).join("") + `</ul>`;
       }
       body = `<div class="trip-body">
         <form class="trip-pay" data-form="set-pay" data-id="${l.id}" autocomplete="off">${payFields(l)}
-          <button class="btn ghost" type="submit">Αποθήκευση ποσού</button></form>
+          <button class="btn ghost" type="submit">Αποθήκευση</button></form>
         ${body}
         <div class="trip-actions">
           ${items.length ? `<button type="button" class="btn wide" data-act="repeat" data-id="${l.id}" data-mode="all">${ic("plus")}Νέα λίστα με όλα</button>` : ""}
@@ -1051,7 +1056,7 @@ function endSession(message) {
 /* ----- ποσά και στατιστικά ----- */
 
 // Πεδία πληρωμής: ποσό και (προαιρετικά) κατάστημα. Προτείνει το κατάστημα με τα περισσότερα προϊόντα.
-function payFields(l, required = false) {
+function payFields(l, required = false, newBrand = null) {
   const st = stores(), sm = storeMap();
   const cnt = {};
   itemsOf(l.id).forEach(i => { if (i.done && sm[i.store]) cnt[i.store] = (cnt[i.store] || 0) + 1; });
@@ -1059,8 +1064,9 @@ function payFields(l, required = false) {
   return `<div class="pay">
     <label class="pay-l" for="payAmt">Πόσο πλήρωσες;${required ? "" : ` <span class="muted">Προαιρετικό</span>`}</label>
     <div class="money"><input class="field" id="payAmt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${l.amount ? l.amount.toFixed(2).replace(".", ",") : ""}"><span>€</span></div>
-    ${st.length ? `<div class="radios" role="radiogroup" aria-label="Κατάστημα πληρωμής">
-      <label><input type="radio" name="payStore" value=""${guess ? "" : " checked"}><span>Κανένα</span></label>
+    ${st.length || newBrand ? `<div class="radios" role="radiogroup" aria-label="Κατάστημα πληρωμής">
+      <label><input type="radio" name="payStore" value=""${guess || newBrand ? "" : " checked"}><span>Κανένα</span></label>
+      ${newBrand ? `<label><input type="radio" name="payStore" value="brand:${newBrand.id}" checked><span>${logo({ name: newBrand.name, brand: newBrand.id }, "s")}${esc(newBrand.name)} <span class="muted">νέο</span></span></label>` : ""}
       ${st.map(s => `<label><input type="radio" name="payStore" value="${s.id}"${s.id === guess ? " checked" : ""}><span>${logo(s, "s")}${esc(s.name)}</span></label>`).join("")}
     </div>` : ""}
   </div>`;
@@ -1078,6 +1084,151 @@ function pastSheet() {
       </div>
     </form>`;
 }
+/* ----- εισαγωγή απόδειξης ----- */
+
+function rcptSheet(msg = "") {
+  return `<h2 class="sheet-title">Εισαγωγή απόδειξης</h2>
+    <p class="sheet-text small">Φωτογράφισε την απόδειξη ίσια και με καλό φως. Η ανάγνωση γίνεται στη συσκευή σου και η φωτογραφία δεν ανεβαίνει πουθενά.</p>
+    <div id="rcptBox">
+      ${msg ? `<p class="rcpt-err">${esc(msg)}</p>` : ""}
+      <div class="rcpt-pick">
+        <label class="btn wide">${ic("camera")}Φωτογραφία ή αρχείο<input type="file" accept="image/*" id="rcptFile" hidden></label>
+      </div>
+      <details class="rcpt-paste"><summary>Ή επικόλλησε το κείμενο της απόδειξης</summary>
+        <form data-form="rcpt-text" autocomplete="off">
+          <textarea class="field" name="text" rows="6" spellcheck="false" placeholder="Π.χ. από ηλεκτρονική απόδειξη"></textarea>
+          <button class="btn" type="submit">Ανάγνωση</button>
+        </form>
+      </details>
+    </div>`;
+}
+const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+let ocrWorker = null, ocrProgress = null;
+async function ocrWorkerReady() {
+  if (!window.Tesseract) await loadScript("/ocr/tesseract.min.js");
+  const base = location.origin + "/ocr";
+  if (!ocrWorker) ocrWorker = window.Tesseract.createWorker("ell+eng", 1, {
+    workerPath: base + "/worker.min.js", corePath: base, langPath: base, gzip: true,
+    logger: m => ocrProgress && ocrProgress(m)
+  }).catch(e => { ocrWorker = null; throw e; });
+  return ocrWorker;
+}
+// Γκρι και σε μέγεθος που διαβάζει καλά το OCR (οι μικρές φωτογραφίες μεγαλώνουν, οι τεράστιες μικραίνουν)
+async function prepImage(file) {
+  const bmp = await createImageBitmap(file);
+  const target = bmp.width < 1000 ? 1400 : Math.min(bmp.width, 2200);
+  const k = target / bmp.width;
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const g = c.getContext("2d");
+  g.filter = "grayscale(1) contrast(1.15)";
+  g.imageSmoothingQuality = "high";
+  g.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close && bmp.close();
+  return c;
+}
+async function readReceiptFile(file) {
+  const box = $("#rcptBox");
+  if (!box) return;
+  const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="bar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
+  say("Ετοιμάζω την ανάγνωση…", 0.02);
+  ocrProgress = m => {
+    if (m.status === "recognizing text") say("Διαβάζω την απόδειξη…", 0.3 + m.progress * 0.7);
+    else if (/load|initializ/.test(m.status)) say("Κατεβαίνει η αναγνώριση κειμένου (μόνο την πρώτη φορά)…", Math.min(0.3, 0.05 + (m.progress || 0) * 0.25));
+  };
+  try {
+    const [w, img] = await Promise.all([ocrWorkerReady(), prepImage(file)]);
+    const { data } = await w.recognize(img);
+    ocrProgress = null;
+    showReceipt(data.text);
+  } catch (err) {
+    ocrProgress = null;
+    console.error(err);
+    if ($("#rcptBox")) openSheet(rcptSheet(navigator.onLine ? "Δεν μπόρεσα να διαβάσω τη φωτογραφία. Δοκίμασε ξανά." : "Την πρώτη φορά χρειάζεται internet για να κατέβει η αναγνώριση κειμένου."));
+  }
+}
+let rcpt = null;
+function showReceipt(text) {
+  const r = parseReceipt(text);
+  if (!r.items.length && r.total == null) { openSheet(rcptSheet("Δεν βρήκα προϊόντα ή σύνολο. Δοκίμασε πιο καθαρή φωτογραφία, χωρίς σκιές.")); return; }
+  const known = knownProducts();
+  const cands = [...BPROD.values()].map(p => ({ name: p.name, cat: p.c }))
+    .concat([...known.values()].map(i => ({ name: i.name, cat: catOf(i) })));
+  const items = r.items.map(i => {
+    const m = matchProduct(i.raw, cands);
+    const name = m ? m.name : niceName(i.raw);
+    return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
+  });
+  // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
+  const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
+  const t = r.date ? new Date(r.date.y, r.date.m - 1, r.date.d) : new Date();
+  rcpt = { items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t };
+  openSheet(rcptReview());
+}
+function rcptReview() {
+  const { items, total, date, store, brand } = rcpt;
+  const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const sum = items.reduce((a, i) => a + i.price, 0);
+  const amount = total || (sum ? Math.round(sum * 100) / 100 : null);
+  const money = n => n.toFixed(2).replace(".", ",");
+  return `<h2 class="sheet-title">Από την απόδειξη</h2>
+    <p class="sheet-text small">Έλεγξε τα στοιχεία πριν την αποθήκευση. Οι αποδείξεις γράφουν συντομογραφίες, οπότε διόρθωσε ό,τι ονόματα δεν βγήκαν σωστά.</p>
+    <form data-form="rcpt-save" autocomplete="off" class="rcpt">
+      <label class="fld">Ημερομηνία<input class="field" type="date" name="date" value="${iso}" required></label>
+      ${payFields({ amount, payStore: store }, true, brand)}
+      ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
+        <span class="small muted">Άθροισμα <b class="num" id="rcptSum">${eur(sum)}</b></span></div>
+      <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">
+        <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}">
+        <div class="money sm"><input class="field num" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
+        <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
+        ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
+      </li>`).join("")}</ul>` : `<p class="small muted">Δεν βρέθηκαν προϊόντα, θα αποθηκευτεί μόνο το ποσό.</p>`}
+      <div class="sheet-actions split">
+        <button class="btn ghost" type="button" data-act="rcpt-sheet">Άλλη φωτογραφία</button>
+        <button class="btn" type="submit">Αποθήκευση</button>
+      </div>
+    </form>`;
+}
+function rcptSumUpdate() {
+  const lis = [...document.querySelectorAll(".rcpt-items li")];
+  const sum = lis.reduce((a, li) => a + (parseAmount(li.querySelector('[name^="p"]').value) || 0), 0);
+  const s = $("#rcptSum"), c = $("#rcptCount");
+  if (s) s.textContent = eur(sum);
+  if (c) c.textContent = lis.length;
+}
+function saveReceipt(f, v) {
+  const amount = parseAmount(f.querySelector("#payAmt").value);
+  const [y, m, d] = (v.date || "").split("-").map(Number);
+  if (!y) return;
+  let store = v.payStore || "";
+  if (store.startsWith("brand:")) {
+    const b = BRAND[store.slice(6)], st = stores();
+    const s = touch({ id: uid(), name: b.name, brand: b.id, color: b.color, order: Math.max(0, ...st.map(x => x.order || 0)) + 1 });
+    doc.stores.push(s);
+    store = s.id;
+  }
+  const t = new Date(y, m - 1, d, 12).getTime();
+  const l = touch({ id: uid(), name: `Ψώνια ${d}/${m}${y !== today.getFullYear() ? "/" + y : ""}`, createdAt: t, closedAt: t, amount, payStore: amount ? store : "", receipt: true });
+  doc.lists.push(l);
+  let n = 0;
+  for (const li of f.querySelectorAll(".rcpt-items li")) {
+    const k = li.dataset.k, name = (v["n" + k] || "").trim();
+    if (!name) continue;
+    doc.items.push(touch({ id: uid(), listId: l.id, name, qty: v["q" + k] || "", cat: CAT[v["c" + k]] ? v["c" + k] : guessCat(name),
+      store, done: true, order: n++, price: parseAmount(v["p" + k]) || undefined }));
+  }
+  rcpt = null;
+  ui.histView = "lists"; ui.histOpen = l.id; saveUi();
+  changed();
+  closeSheet();
+  toast(`Προστέθηκε η απόδειξη${amount ? `: ${eur(amount)}` : ""}${n ? `, ${n} προϊόντα` : ""}`, { label: "Αναίρεση", run: () => {
+    l.deleted = true; touch(l);
+    alive(doc.items).filter(i => i.listId === l.id).forEach(i => { i.deleted = true; touch(i); });
+    changed();
+  } });
+}
+
 function readPay(l, root = document) {
   const a = root.querySelector("#payAmt");
   if (!a) return;
@@ -1283,6 +1434,8 @@ const actions = {
   "aisle-toggle": b => { ui.collapsed = { ...(ui.collapsed || {}) }; ui.collapsed[b.dataset.c] = !ui.collapsed[b.dataset.c]; saveUi(); render(); },
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
+  "rcpt-sheet": () => openSheet(rcptSheet()),
+  "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); },
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
   "prod-add": b => {
@@ -1397,6 +1550,7 @@ document.addEventListener("toggle", e => {
 
 document.addEventListener("change", e => {
   const el = e.target;
+  if (el.id === "rcptFile") { if (el.files[0]) readReceiptFile(el.files[0]); return; }
   if (el.name === "cat" && el.closest("#catPicker")) {
     const p = el.closest("#catPicker"), c = CAT[el.value];
     p.querySelector(".picked").textContent = c.name;
@@ -1414,6 +1568,7 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("input", e => {
+  if (e.target.closest && e.target.closest(".rcpt-items")) { rcptSumUpdate(); return; }
   if (e.target.id !== "pfind") return;
   const q = norm(e.target.value);
   let any = false;
@@ -1477,6 +1632,11 @@ document.addEventListener("submit", e => {
     } else closeSheet();
     return;
   }
+  if (kind === "rcpt-text") {
+    if ((v.text || "").trim()) showReceipt(v.text);
+    return;
+  }
+  if (kind === "rcpt-save") { saveReceipt(f, v); return; }
   if (kind === "set-pay") {
     const l = findById("lists", f.dataset.id);
     if (!l) return;

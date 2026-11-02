@@ -1,7 +1,9 @@
 // Offline support: the app shell is served from cache and refreshed in the background.
 // /api/* always goes to the network (the app keeps its own copy of the data).
-const CACHE = "psonia-v23";
-const SHELL = ["/", "/styles.css", "/app.js", "/merge.js", "/templates.js", "/dishes.js", "/products.js", "/manifest.webmanifest",
+const CACHE = "psonia-v24";
+// Η αναγνώριση αποδείξεων (~8 MB) κατεβαίνει μόνο την πρώτη φορά που χρησιμοποιείται και μένει σε δική της cache
+const OCR_CACHE = "psonia-ocr-1";
+const SHELL = ["/", "/styles.css", "/app.js", "/merge.js", "/templates.js", "/dishes.js", "/products.js", "/receipt.js", "/manifest.webmanifest",
   "/icon-v2.svg", "/icon-v2-192.png", "/icon-v2-512.png", "/icon-v2-maskable-512.png", "/apple-touch-icon-v2.png", "/favicon.ico"];
 
 self.addEventListener("install", e => {
@@ -10,7 +12,7 @@ self.addEventListener("install", e => {
 
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== OCR_CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -21,6 +23,16 @@ self.addEventListener("fetch", e => {
 
   if (url.origin === location.origin) {
     if (url.pathname.startsWith("/api/")) return;
+    if (url.pathname.startsWith("/ocr/")) {
+      e.respondWith(caches.open(OCR_CACHE).then(async c => {
+        const cached = await c.match(url.pathname);
+        if (cached) return cached;
+        const r = await fetch(req);
+        if (r.ok) c.put(url.pathname, r.clone());
+        return r;
+      }));
+      return;
+    }
     const key = req.mode === "navigate" ? "/" : url.pathname;
     e.respondWith(caches.open(CACHE).then(async c => {
       const cached = await c.match(key);
