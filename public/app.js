@@ -1074,7 +1074,7 @@ function payFields(l, required = false, newBrand = null) {
   const st = stores(), sm = storeMap();
   const cnt = {};
   itemsOf(l.id).forEach(i => { if (i.done && sm[i.store]) cnt[i.store] = (cnt[i.store] || 0) + 1; });
-  const guess = l.payStore && sm[l.payStore] ? l.payStore : Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "";
+  const guess = l.payStore && sm[l.payStore] ? l.payStore : l.noStore ? "" : Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "";
   return `<div class="pay">
     <label class="pay-l" for="payAmt">Πόσο πλήρωσες;${required ? "" : ` <span class="muted">Προαιρετικό</span>`}</label>
     <div class="money"><input class="field" id="payAmt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${l.amount ? l.amount.toFixed(2).replace(".", ",") : ""}"><span>€</span></div>
@@ -1748,7 +1748,8 @@ function readPay(l, root = document) {
   if (!a) return;
   l.amount = parseAmount(a.value);
   const s = root.querySelector('input[name="payStore"]:checked');
-  l.payStore = l.amount && s ? s.value : "";
+  l.payStore = s ? s.value : ""; // το κατάστημα κρατιέται και χωρίς ποσό
+  l.noStore = !l.payStore; // διάλεξε ρητά «Κανένα»: να μην ξαναπροτείνεται κατάστημα
 }
 
 const ymOf = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
@@ -2215,7 +2216,8 @@ document.addEventListener("submit", e => {
     const l = findById("lists", f.dataset.id);
     if (!l) return;
     readPay(l, f); touch(l); changed();
-    toast(l.amount ? `Αποθηκεύτηκε: ${eur(l.amount)}` : "Το ποσό σβήστηκε");
+    const sn = (storeMap()[l.payStore] || {}).name;
+    toast(l.amount ? `Αποθηκεύτηκε: ${eur(l.amount)}${sn ? ` · ${sn}` : ""}` : sn ? `Αποθηκεύτηκε: ${sn}` : "Αποθηκεύτηκε χωρίς ποσό και κατάστημα");
     return;
   }
   if (kind === "add-dish") {
