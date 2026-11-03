@@ -309,7 +309,10 @@ export function matchProduct(rawName, candidates) {
     if (headTok && headTok.length === 3 && hs === 1 && headTok === toks[0] && toks.length > 1) continue;
     // ακριβής αρχή λέξης μετράει περισσότερο από ταίριασμα με λάθος γράμμα
     const exact = strong.filter(t => words.some(w => w.startsWith(t))).length;
-    const score = (headTok ? 10 : 0) + hs + exact * 0.5 + sh * 0.3 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
+    // όταν η λέξη της απόδειξης είναι μεγαλύτερη από την κύρια λέξη του προϊόντος («ΚΡΕΜΑΣΑΠ» και «Κρέμα»),
+    // το προϊόν καλύπτει μόνο ένα κομμάτι της, άρα είναι λιγότερο πιθανό από ένα που την καλύπτει όλη (Κρεμοσάπουνο)
+    const cover = headTok ? Math.min(1, head.length / headTok.length) : 0;
+    const score = (headTok ? 10 : 0) + hs + exact * 0.5 + sh * 0.3 + cover * 0.6 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
     if (!best || score > best.score) best = { ...c, score };
   }
   return best;

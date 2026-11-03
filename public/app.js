@@ -1214,9 +1214,10 @@ function showReceipt(text, parsed) {
       if (!m || !fits(m)) {
         m = matchProduct(i.raw, cands.filter(fits));
         if (!m) {
+          // η γενική ονομασία αυτού που πουλάει η μάρκα («ΔΕΛΤΑ MMMILK» -> Γάλα)
           const first = br.words.split(",")[0].trim(), exact = cands.find(c => norm(c.name) === norm(first));
           if (exact) m = exact;
-          else return { name: `${brandLabel(br)} ${first}`, raw: i.raw, price: i.price, qty: i.qty, cat: br.cat };
+          else return { name: cap(first), raw: i.raw, price: i.price, qty: i.qty, cat: br.cat };
         }
       }
     }
