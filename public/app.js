@@ -1162,11 +1162,12 @@ function showReceipt(text) {
   // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
   const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
   const t = r.date ? new Date(r.date.y, r.date.m - 1, r.date.d) : new Date();
-  rcpt = { items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t };
+  rcpt = { items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
 }
 function rcptReview() {
-  const { items, total, date, store, brand } = rcpt;
+  const { items, total, date, store, brand, gotDate } = rcpt;
+  const note = (ok, what) => ok ? `<span class="rcpt-ok">${ic("check")}από την απόδειξη</span>` : `<span class="rcpt-miss">δεν βρέθηκε${what}, έλεγξέ το</span>`;
   const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const sum = items.reduce((a, i) => a + i.price, 0);
   const amount = total || (sum ? Math.round(sum * 100) / 100 : null);
@@ -1174,8 +1175,9 @@ function rcptReview() {
   return `<h2 class="sheet-title">Από την απόδειξη</h2>
     <p class="sheet-text small">Έλεγξε τα στοιχεία πριν την αποθήκευση. Οι αποδείξεις γράφουν συντομογραφίες, οπότε διόρθωσε ό,τι ονόματα δεν βγήκαν σωστά.</p>
     <form data-form="rcpt-save" autocomplete="off" class="rcpt">
-      <label class="fld">Ημερομηνία<input class="field" type="date" name="date" value="${iso}" required></label>
+      <label class="fld"><span class="fld-row">Ημερομηνία ${note(gotDate, ", μπήκε η σημερινή")}</span><input class="field" type="date" name="date" value="${iso}" required></label>
       ${payFields({ amount, payStore: store }, true, brand)}
+      <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
         <span class="small muted">Άθροισμα <b class="num" id="rcptSum">${eur(sum)}</b></span></div>
       <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">

@@ -527,3 +527,10 @@ body.is-dragging .day input{pointer-events:none}
   #print-root{display:block}
   #print-root .sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+.fld-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rcpt-ok,.rcpt-miss{font-size:.82rem;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.rcpt-ok{color:var(--basil)}
+.rcpt-ok .ic{width:14px;height:14px}
+.rcpt-miss{color:var(--danger)}
+.rcpt-note{margin:-6px 0 0}

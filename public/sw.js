@@ -1,6 +1,6 @@
 // Offline support: the app shell is served from cache and refreshed in the background.
 // /api/* always goes to the network (the app keeps its own copy of the data).
-const CACHE = "psonia-v24";
+const CACHE = "psonia-v25";
 // Η αναγνώριση αποδείξεων (~8 MB) κατεβαίνει μόνο την πρώτη φορά που χρησιμοποιείται και μένει σε δική της cache
 const OCR_CACHE = "psonia-ocr-1";
 const SHELL = ["/", "/styles.css", "/app.js", "/merge.js", "/templates.js", "/dishes.js", "/products.js", "/receipt.js", "/manifest.webmanifest",
