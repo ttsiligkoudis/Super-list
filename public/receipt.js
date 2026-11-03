@@ -35,7 +35,9 @@ const RECEIPT_WORDS = `ΣΑΚΟΥΛΑ ΒΙΟΔΙΑΣΠΩΜΕΝΗ ΤΡΙΜΜΕΝ�
 ΧΑΡΤΙ ΚΟΥΖΙΝΑΣ ΥΓΕΙΑΣ ΧΑΡΤΟΜΑΝΤΗΛΑ ΑΠΟΡΡΥΠΑΝΤΙΚΟ ΠΙΑΤΩΝ ΡΟΥΧΩΝ ΜΑΛΑΚΤΙΚΟ ΧΛΩΡΙΝΗ ΣΑΠΟΥΝΙ ΣΑΜΠΟΥΑΝ ΟΔΟΝΤΟΚΡΕΜΑ
 ΣΦΟΥΓΓΑΡΙΑ ΣΑΚΟΥΛΕΣ ΑΠΟΡΡΙΜΜΑΤΩΝ ΑΛΟΥΜΙΝΟΧΑΡΤΟ ΜΕΜΒΡΑΝΗ ΠΑΝΕΣ ΜΩΡΟΜΑΝΤΗΛΑ ΚΡΕΜΑ ΓΑΛΑΚΤΟΣ ΣΑΝΤΙΓΥ ΠΑΓΩΤΟ ΠΙΤΣΑ
 ΣΠΑΝΑΚΙ ΜΑΝΙΤΑΡΙΑ ΑΡΑΚΑΣ ΚΑΛΑΜΠΟΚΙ ΕΛΙΕΣ ΤΟΥΡΣΙ ΞΥΔΙ ΜΟΥΣΤΑΡΔΑ ΣΙΜΙΓΔΑΛΙ ΠΟΥΡΕΣ ΦΡΥΓΑΝΙΕΣ ΚΡΙΤΣΙΝΙΑ ΚΟΥΛΟΥΡΙ
-ΤΕΜΑΧΙΑ ΤΕΜ ΣΥΣΚΕΥΑΣΙΑ ΣΥΣΚ ΚΙΛΟ ΛΙΤΡΟ ΜΙΚΡΟ ΜΕΓΑΛΟ ΛΕΥΚΟ ΛΕΥΚΗ ΜΑΥΡΟ ΚΟΚΚΙΝΟ ΠΡΑΣΙΝΟ ΒΙΟ ΒΙΟΛΟΓΙΚΟ ΦΥΣΙΚΟ ΕΛΛΗΝΙΚΟ`;
+ΤΕΜΑΧΙΑ ΤΕΜ ΣΥΣΚΕΥΑΣΙΑ ΣΥΣΚ ΚΙΛΟ ΛΙΤΡΟ ΜΙΚΡΟ ΜΕΓΑΛΟ ΛΕΥΚΟ ΛΕΥΚΗ ΜΑΥΡΟ ΚΟΚΚΙΝΟ ΠΡΑΣΙΝΟ ΒΙΟ ΒΙΟΛΟΓΙΚΟ ΦΥΣΙΚΟ ΕΛΛΗΝΙΚΟ
+ΣΥΜΠΥΚΝΩΜΕΝΟΣ ΣΥΜΠΥΚΝΩΜΕΝΟΣ ΠΟΛΤΟΣ ΤΟΜΑΤΑ ΤΟΜΑΤΑΣ ΕΛΑΦΡΥΣ ΜΩΡΟΜΑΝΤΗΛΑ ΑΡΩΜΑΤΙΚΕΣ ΑΡΩΜΑ ΥΓΡΟ ΑΣΠΡΟΥ ΑΣΠΡΑ ΓΕΝΙΚΟΥ
+ΚΑΘΑΡΙΣΜΟΥ ΚΑΘΑΡΙΣΤΙΚΟ ΚΡΕΜΩΔΕΣ ΑΛΟΥΜΙΝΟΧΑΡΤΟ ΜΑΝΙΤΑΡΙΑ ΓΙΓΑΣ ΓΙΓΑΝΤΕΣ ΖΩΜΟΣ ΚΟΤΑΣ ΚΛΩΒΟΥ ΠΛΥΣΕΙΣ ΛΟΥΛΟΥΔΙ ΛΕΜΟΝΙ`;
 const upPlain = s => String(s).toLocaleUpperCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 let PREFIX = null;
 function prefixes() {
@@ -54,6 +56,7 @@ function fixSpelling(w) {
   if (P.has(w)) return w;
   const pos = [...w].map((c, i) => [i, CONFUSE[c] || ""]).filter(([, a]) => a);
   for (const [i, alts] of pos) for (const a of alts) { const v = w.slice(0, i) + a + w.slice(i + 1); if (P.has(v)) return v; }
+  if (w.length < 5) return w;
   for (let x = 0; x < pos.length; x++) for (let y = x + 1; y < pos.length; y++) {
     const [i, ai] = pos[x], [j, aj] = pos[y];
     for (const a of ai) for (const b of aj) {
@@ -75,7 +78,7 @@ function fixPart(w) {
 }
 
 // Αριθμοί όπου το OCR έβαλε γράμματα: «Ί,59» -> «1,59», «-Ο,Ο5» -> «-0,05», «0,Θ9» -> «0,09»
-const fixNumber = t => /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,4}[%\d]?$/.test(t) && /\d/.test(t)
+const fixNumber = t => /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,4}[%\d]?$/.test(t) && /\d|^-/.test(t)
   ? t.replace(/([.,])[ΊΙ](?=[\dΟΘο]{2}$)/, "$1").replace(/Θ/g, "6").replace(/[ΟοO]/g, "0").replace(/[ΊΙIl|]/g, "1") : t;
 const num = s => {
   // τρίτο δεκαδικό = θόρυβος του OCR: «0,005» -> «0,05» (διπλό μηδέν), «1,535» -> «1,53»
@@ -244,14 +247,20 @@ export function parseReceipt(text, opts = {}) {
 // Η λέξη ξεκινά με το token, με ανοχή ενός λάθους γράμματος για tokens 4+ γραμμάτων (λάθη OCR)
 function near(w, t) {
   if (w.startsWith(t)) return true;
-  if (t.length < 5 || w.length < t.length) return false;
-  let diff = 0;
-  for (let i = 0; i < t.length; i++) if (w[i] !== t[i] && (++diff > 1 || i === t.length - 1)) return false;
-  return true;
+  if (t.length < 5 || w[0] !== t[0]) return false;
+  // μία αλλαγή, ένα γράμμα παραπάνω ή ένα λιγότερο (λάθη OCR), όχι στο πρώτο γράμμα
+  const ed1 = (a, b) => {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i);
+  };
+  return [t.length - 1, t.length, t.length + 1].some(n => n >= 4 && n <= w.length && ed1(t, w.slice(0, n)));
 }
 const plain = s => String(s).toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 // Ταίριασμα με κάθε λέξη της απόδειξης: «ΝΟΥ.ΣΑΜ.ΓΑΛ.ΠΛΗ» -> «Γάλα φρέσκο πλήρες», «CO.ΜΟΥΣΤ.CL» -> «Μουστάρδα».
 // Η πρώτη λέξη του προϊόντος (το «τι είναι») πρέπει να ταιριάζει σε κάποιο κομμάτι 3+ γραμμάτων.
+const STOP = new Set(["ολες", "ολα", "ολους", "χωρις", "χρησεις", "για", "τις", "των", "του", "της", "και", "απο", "μικρα", "μεγαλα", "μεγαλο", "μικρο", "συσκευασια", "σκονη", "φετες", "κομματια"]);
 export function matchProduct(rawName, candidates) {
   const toks = plain(rawName).split(/[^a-zα-ω]+/).filter(t => t.length >= 2 && !/^(gr?|kg|ml|cl|lt|tem|τεμ|g)$/.test(t));
   const strong = toks.filter(t => t.length >= 3), short = toks.filter(t => t.length < 3);
@@ -265,9 +274,15 @@ export function matchProduct(rawName, candidates) {
     const hit = t => words.some(w => near(w, t) || (t.length >= 5 && t.startsWith(w) && w.length >= 4));
     const hs = strong.filter(hit).length, sh = short.filter(t => words.slice(1).some(w => w.startsWith(t))).length;
     if (!hs) continue;
+    // χωρίς το «τι είναι», θέλει ουσιαστική λέξη 5+ γραμμάτων (όχι «για», «όλες», «χωρίς»...)
+    if (!headTok && !strong.some(t => words.slice(1).some(w => w.length >= 5 && !STOP.has(w) && w.startsWith(t)))) continue;
     // πόσο σίγουρο: περισσότερα κοινά κομμάτια, μετά μεγαλύτερο κομμάτι στο «τι είναι», μετά πιο σύντομο όνομα.
     // Χωρίς ταίριασμα στο «τι είναι» (π.χ. «ΣΤΡ» -> «Γιαούρτι στραγγιστό») μετράει πολύ λιγότερο.
-    const score = (headTok ? 10 : 0) + hs + sh * 0.3 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
+    // μόνο ένα κομμάτι 3 γραμμάτων στην αρχή (συνήθως μάρκα, π.χ. «DET.» που διαβάστηκε «ΡΕΤ.») δεν αρκεί
+    if (headTok && headTok.length === 3 && hs === 1 && headTok === toks[0] && toks.length > 1) continue;
+    // ακριβής αρχή λέξης μετράει περισσότερο από ταίριασμα με λάθος γράμμα
+    const exact = strong.filter(t => words.some(w => w.startsWith(t))).length;
+    const score = (headTok ? 10 : 0) + hs + exact * 0.5 + sh * 0.3 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
     if (!best || score > best.score) best = { ...c, score };
   }
   return best;
