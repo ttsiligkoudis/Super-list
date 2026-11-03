@@ -1181,7 +1181,10 @@ async function readReceiptFile(file) {
   }
 }
 let rcpt = null;
+// Χειροκίνητες αντιστοιχίσεις στην οθόνη ελέγχου: γραμμή απόδειξης -> id προϊόντος της λίστας ή "new"
+let rcptManual = new Map();
 function showReceipt(text, parsed) {
+  rcptManual = new Map();
   const r = parsed || parseReceipt(text);
   if (!r.items.length && r.total == null) { openSheet(rcptSheet("Δεν βρήκα προϊόντα ή σύνολο. Δοκίμασε πιο καθαρή φωτογραφία, χωρίς σκιές.")); return; }
   const known = knownProducts();
@@ -1204,7 +1207,7 @@ function showReceipt(text, parsed) {
   const tg = rcptTargets(t, r.total)[0];
   if (tg) {
     const pairs = pairRcpt(items.map((i, k) => ({ k: String(k), name: i.name, raw: i.raw })), itemsOf(tg.l.id));
-    for (const [k, it] of pairs) { items[+k].name = it.name; items[+k].cat = catOf(it); }
+    for (const [k, it] of pairs) { items[+k].orig = items[+k].name; items[+k].origCat = items[+k].cat; items[+k].name = it.name; items[+k].cat = catOf(it); }
   }
   rcpt = { text, items, chain: r.store || "", store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
@@ -1274,22 +1277,106 @@ function sendShared() {
   shareQueue = [];
   flushShared();
 }
+function finalPairs(rows, listItems) {
+  const byId = new Map(listItems.map(i => [i.id, i]));
+  const out = new Map(), used = new Set();
+  for (const r of rows) {
+    const m = rcptManual.get(r.k);
+    if (m && m !== "new" && byId.has(m) && !used.has(m)) { out.set(r.k, byId.get(m)); used.add(m); }
+  }
+  const auto = pairRcpt(rows.filter(r => !rcptManual.has(r.k)), listItems.filter(i => !used.has(i.id)));
+  for (const [k, it] of auto) out.set(k, it);
+  return out;
+}
+const rcptTarget = () => { const sel = $('input[name="target"]:checked'); return sel && sel.value ? findById("lists", sel.value) : null; };
 const rcptRows = (root = document) => [...root.querySelectorAll(".rcpt-items li")].map(li => { const f = li.querySelector('[name^="n"]');
   return { k: li.dataset.k, li, name: f.value.trim(), raw: f.title, edited: f.value !== f.defaultValue }; });
 function rcptPairHint() {
-  const el = $("#rcptPair"), sel = $('input[name="target"]:checked');
+  const el = $("#rcptPair");
   if (!el) return;
-  const l = sel && sel.value ? findById("lists", sel.value) : null;
-  document.querySelectorAll(".rcpt-items .in-list").forEach(x => x.remove());
+  const l = rcptTarget();
+  document.querySelectorAll(".rcpt-items .link-chip, .rcpt-left").forEach(x => x.remove());
   if (!l) { el.textContent = "Θα γίνει νέα λίστα στο ιστορικό."; return; }
-  const rows = rcptRows(), pairs = pairRcpt(rows, itemsOf(l.id));
+  const rows = rcptRows(), items = itemsOf(l.id), pairs = finalPairs(rows, items);
   for (const r of rows) {
-    const it = pairs.get(r.k);
-    if (it && norm(it.name) !== norm(r.name)) r.li.insertAdjacentHTML("beforeend", `<span class="in-list">${ic("check")}${esc(it.name)}</span>`);
-    else if (it) r.li.insertAdjacentHTML("beforeend", `<span class="in-list">${ic("check")}στη λίστα</span>`);
+    const it = pairs.get(r.k), panelOpen = r.li.querySelector(".link-panel");
+    const chip = it
+      ? `<button type="button" class="link-chip on" data-act="rcpt-link" data-k="${r.k}">${ic("check")}<span>${norm(it.name) === norm(r.name) ? "Στη λίστα" : esc(it.name)}</span><em>αλλαγή</em></button>`
+      : `<button type="button" class="link-chip" data-act="rcpt-link" data-k="${r.k}">${ic("plus")}<span>Νέο στη λίστα</span><em>σύνδεση με προϊόν</em></button>`;
+    (panelOpen || r.li.lastElementChild).insertAdjacentHTML(panelOpen ? "beforebegin" : "afterend", chip);
   }
+  const usedIds = new Set([...pairs.values()].map(i => i.id));
+  const left = items.filter(i => !usedIds.has(i.id));
   const extra = rows.length - pairs.size;
-  el.textContent = `${pairs.size} από ${rows.length} προϊόντα βρέθηκαν στη λίστα και θα πάρουν την τιμή τους.${extra ? ` ${extra === 1 ? "Το άλλο θα προστεθεί" : `Τα άλλα ${extra} θα προστεθούν`} στη λίστα.` : ""} Μπαίνει και το συνολικό ποσό.`;
+  el.textContent = `${pairs.size} από ${rows.length} προϊόντα βρέθηκαν στη λίστα και θα πάρουν την τιμή τους.${extra ? ` ${extra === 1 ? "Το άλλο θα προστεθεί" : `Τα άλλα ${extra} θα προστεθούν`} ως νέα.` : ""} Πάτα κάτω από ένα προϊόν για να το συνδέσεις με άλλο.`;
+  const ul = $(".rcpt-items");
+  if (ul && left.length) ul.insertAdjacentHTML("afterend", `<div class="rcpt-left"><h3>Στη λίστα αλλά όχι στην απόδειξη <span class="muted num">${left.length}</span></h3>
+    <p class="small muted">Πάτα ένα για να το συνδέσεις με γραμμή της απόδειξης.</p>
+    <div class="left-chips">${left.map(i => `<button type="button" class="pill" data-act="rcpt-left" data-id="${i.id}">${esc(i.name)}</button>`).join("")}</div></div>`);
+}
+// Πάνελ επιλογής κάτω από μια γραμμή: τα προϊόντα της λίστας που περισσεύουν, με αναζήτηση
+function openLinkPanel(li, opts, title, sub = "") {
+  document.querySelectorAll(".link-panel").forEach(x => x.remove());
+  const html = `<div class="link-panel" role="dialog" aria-label="${esc(title)}">
+    ${sub ? `<p class="lp-title">${esc(sub)}</p>` : ""}
+    <div class="lp-head"><input class="field" type="search" placeholder="${esc(title)}" aria-label="${esc(sub || title)}" data-link-find autocomplete="off" spellcheck="false">
+      <button type="button" class="icon-btn" data-act="link-close" aria-label="Κλείσιμο">${ic("up")}</button></div>
+    <div class="lp-opts">${opts.map(o => `<button type="button" class="lp-opt${o.cls ? " " + o.cls : ""}" data-act="${o.act}" data-k="${o.k ?? ""}" data-id="${o.id ?? ""}" data-q="${esc(norm(o.label))}">${o.icon ? ic(o.icon) : ""}<span>${esc(o.label)}</span>${o.note ? `<em>${esc(o.note)}</em>` : ""}</button>`).join("")}
+      <p class="lp-none small muted" hidden>Δεν βρέθηκε. Γράψε το όνομα στο πεδίο της γραμμής.</p></div></div>`;
+  li.insertAdjacentHTML("beforeend", html);
+  const inp = li.querySelector("[data-link-find]");
+  if (window.matchMedia("(pointer: fine)").matches) inp.focus();
+  li.querySelector(".link-panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function linkRow(k) {
+  const l = rcptTarget();
+  if (!l) return;
+  const rows = rcptRows(), r = rows.find(x => x.k === k);
+  if (!r) return;
+  if (r.li.querySelector(".link-panel")) { r.li.querySelector(".link-panel").remove(); return; }
+  const items = itemsOf(l.id), pairs = finalPairs(rows, items), cur = pairs.get(k);
+  const usedElsewhere = new Set([...pairs].filter(([kk]) => kk !== k).map(([, i]) => i.id));
+  const free = items.filter(i => !usedElsewhere.has(i.id));
+  // προτάσεις πρώτα: όσα μοιάζουν με τη γραμμή, μετά αλφαβητικά
+  const sc = new Map(free.map(i => { const c = [{ name: i.name, id: i.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c);
+    return [i.id, Math.max(a ? a.score : 0, b ? b.score : 0)]; }));
+  free.sort((a, b) => (b.id === (cur && cur.id)) - (a.id === (cur && cur.id)) || sc.get(b.id) - sc.get(a.id) || a.name.localeCompare(b.name, "el"));
+  const opts = free.map(i => ({ act: "link-pick", k, id: i.id, label: i.name, icon: cur && cur.id === i.id ? "check" : "", cls: cur && cur.id === i.id ? "cur" : sc.get(i.id) > 0 ? "sugg" : "", note: cur && cur.id === i.id ? "τώρα" : sc.get(i.id) > 0 ? "μοιάζει" : "" }));
+  opts.push({ act: "link-pick", k, id: "new", label: "Νέο προϊόν, δεν ήταν στη λίστα", icon: "plus", cls: "new" });
+  openLinkPanel(r.li, opts, "Αναζήτηση στη λίστα…");
+}
+function leftItem(id) {
+  const l = rcptTarget(), it = l && findById("items", id);
+  if (!it) return;
+  const rows = rcptRows(), pairs = finalPairs(rows, itemsOf(l.id));
+  const free = rows.filter(r => !pairs.has(r.k));
+  const box = $(".rcpt-left");
+  document.querySelectorAll(".link-panel").forEach(x => x.remove());
+  const sc = new Map(free.map(r => { const c = [{ name: it.name, id: it.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c); return [r.k, Math.max(a ? a.score : 0, b ? b.score : 0)]; }));
+  free.sort((a, b) => sc.get(b.k) - sc.get(a.k));
+  const price = k => { const f = document.querySelector(`[name="p${k}"]`); return f ? f.value + " €" : ""; };
+  const opts = free.map(r => ({ act: "link-pick", k: r.k, id, label: r.name, note: price(r.k), cls: sc.get(r.k) > 0 ? "sugg" : "" }));
+  if (!opts.length) { toast("Όλες οι γραμμές της απόδειξης έχουν ήδη αντιστοίχιση"); return; }
+  openLinkPanel(box, opts, "Αναζήτηση στην απόδειξη…", `Σε ποια γραμμή της απόδειξης είναι «${it.name}»;`);
+  box.querySelector(".link-panel").dataset.left = id;
+}
+function pickLink(k, id) {
+  const f = document.querySelector(`[name="n${k}"]`), c = document.querySelector(`[name="c${k}"]`);
+  document.querySelectorAll(".link-panel").forEach(x => x.remove());
+  if (!f) return;
+  if (id === "new") {
+    rcptManual.set(k, "new");
+    // πίσω στο όνομα της απόδειξης, αν είχε πάρει το όνομα της λίστας
+    const l = rcptTarget();
+    if (l && itemsOf(l.id).some(i => norm(i.name) === norm(f.value))) { f.value = f.dataset.orig; if (c) c.value = f.dataset.origCat; }
+  } else {
+    for (const [kk, v] of rcptManual) if (v === id && kk !== k) rcptManual.delete(kk);
+    rcptManual.set(k, id);
+    const it = findById("items", id);
+    if (it) { f.value = it.name; if (c) c.value = catOf(it); }
+  }
+  f.defaultValue = f.value; // όχι «διορθωμένο από τον χρήστη»
+  rcptPairHint();
 }
 function rcptReview() {
   const { items, total, date, store, brand, gotDate } = rcpt;
@@ -1313,7 +1400,7 @@ function rcptReview() {
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
         <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
       <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">
-        <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}">
+        <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}" data-orig="${esc(i.orig || i.name)}" data-orig-cat="${i.origCat || i.cat}">
         <div class="money sm"><input class="field num${total && i.price > total ? " bad" : ""}" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
         <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
         ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
@@ -1382,7 +1469,7 @@ function saveReceiptInto(f, v, l, amount, store) {
   const chain = (rcpt && rcpt.chain) || (brandOf(storeMap()[store]) || {}).id || "";
   const before = snapshot("lists", [l]).concat(snapshot("items", itemsOf(l.id)));
   const rows = rcptRows(f).filter(r => r.name);
-  const pairs = pairRcpt(rows, itemsOf(l.id));
+  const pairs = finalPairs(rows, itemsOf(l.id));
   let order = Math.max(0, ...itemsOf(l.id).map(i => i.order || 0)) + 1, added = [];
   for (const r of rows) {
     const price = parseAmount(v["p" + r.k]) || undefined, it = pairs.get(r.k);
@@ -1619,6 +1706,10 @@ const actions = {
   "past-sheet": () => openSheet(pastSheet()),
   "rcpt-sheet": () => { loadShared(); openSheet(rcptSheet()); },
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
+  "rcpt-link": b => linkRow(b.dataset.k),
+  "rcpt-left": b => leftItem(b.dataset.id),
+  "link-pick": b => pickLink(b.dataset.k, b.dataset.id),
+  "link-close": () => document.querySelectorAll(".link-panel").forEach(x => x.remove()),
   "rcpt-reparse": () => { const t = $("#rcptRaw"); if (t && t.value.trim()) showReceipt(t.value); },
   "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); rcptPairHint(); },
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
@@ -1754,6 +1845,13 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("input", e => {
+  if (e.target.matches && e.target.matches("[data-link-find]")) {
+    const q = norm(e.target.value), panel = e.target.closest(".link-panel");
+    let any = false;
+    panel.querySelectorAll(".lp-opt").forEach(o => { const hit = !q || o.classList.contains("new") || o.dataset.q.includes(q); o.hidden = !hit; if (hit && !o.classList.contains("new")) any = true; });
+    panel.querySelector(".lp-none").hidden = any || !q;
+    return;
+  }
   if (e.target.closest && (e.target.closest(".rcpt-items") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); if (e.target.closest(".rcpt-items")) rcptPairHint(); return; }
   if (e.target.id !== "pfind") return;
   const q = norm(e.target.value);

@@ -544,3 +544,31 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt .rcpt-paste[open]{padding-bottom:4px}
 .rcpt .rcpt-paste textarea{font-family:ui-monospace,monospace;font-size:.82rem;min-height:160px}
 .rcpt-items .field.bad{border-color:var(--danger);color:var(--danger)}
+
+/* σύνδεση γραμμών απόδειξης με προϊόντα της λίστας */
+.link-chip{grid-column:1/-1;justify-self:start;display:inline-flex;align-items:center;gap:6px;margin:-2px 0 6px 2px;padding:5px 10px;border-radius:99px;
+  border:1px dashed var(--line);background:transparent;color:var(--ink-2);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;max-width:100%}
+.link-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link-chip em{font-style:normal;font-weight:500;opacity:.75;white-space:nowrap}
+.link-chip em::before{content:"· "}
+.link-chip .ic{width:14px;height:14px;flex:none}
+.link-chip.on{border-style:solid;border-color:color-mix(in srgb,var(--basil) 45%,transparent);color:var(--basil);background:color-mix(in srgb,var(--basil) 10%,transparent)}
+.rcpt-items .in-list{display:none}
+.link-panel{grid-column:1/-1;margin:0 0 10px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2);display:grid;gap:8px}
+.lp-head{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:6px;align-items:center}
+.lp-head .field{min-height:42px}
+.lp-opts{display:grid;gap:4px;max-height:260px;overflow:auto;overscroll-behavior:contain}
+.lp-opt{display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:10px;border:0;background:var(--surface);color:var(--ink);font:inherit;font-size:.95rem;cursor:pointer}
+.lp-opt[hidden]{display:none}
+.lp-opt span{flex:1;min-width:0}
+.lp-opt em{font-style:normal;font-size:.78rem;color:var(--ink-2)}
+.lp-opt.sugg em{color:var(--basil);font-weight:600}
+.lp-opt.cur{outline:2px solid var(--basil)}
+.lp-opt.new{color:var(--sea);font-weight:600}
+.lp-opt .ic{width:16px;height:16px;flex:none}
+.rcpt-left{display:grid;gap:6px}
+.rcpt-left h3{margin:6px 0 0;font-size:1rem}
+.rcpt-left p{margin:0}
+.left-chips{display:flex;flex-wrap:wrap;gap:6px}
+.rcpt-left .link-panel{margin-top:4px}
+.lp-title{margin:0 2px;font-size:.88rem;font-weight:700}
