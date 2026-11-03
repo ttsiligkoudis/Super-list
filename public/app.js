@@ -75,6 +75,7 @@ const ICONS = {
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   receipt: '<path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   flame: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.6-5.3 3.6-8.8.3-1 1.7-1.2 2.2-.2.9 1.8 1 3.2 2.4 4.5.5-.9.7-1.7.8-2.5.1-.8 1.1-1.1 1.6-.5 1.4 1.8 2.4 4 2.4 6.6C18.5 18.4 15.9 21 12 21z"/>',
   chef: '<path d="M7 17h10v3H7z"/><path d="M7 17V12.5A4 4 0 0 1 8.5 5a4 4 0 0 1 7 0A4 4 0 0 1 17 12.5V17"/>',
@@ -315,10 +316,12 @@ window.addEventListener("popstate", () => {
 });
 
 let pendingConfirm = null;
-function openSheet(html) {
+function openSheet(html, { full = false } = {}) {
   if ($("#sheet").hidden) pushLayer("sheet");
   else dropLayer("picker");
+  $("#sheetPanel").classList.toggle("full", full);
   $("#sheetPanel").innerHTML = html;
+  $("#sheetPanel").scrollTop = 0;
   $("#sheet").hidden = false;
   document.body.style.overflow = "hidden";
 }
@@ -1849,13 +1852,13 @@ const actions = {
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-link": b => linkRow(b.dataset.k),
   "recipe-open": b => openRecipe(b.dataset.id),
-  "recipe-new": () => openSheet(recipeFormHtml()),
+  "recipe-new": () => openSheet(recipeFormHtml(), { full: true }),
   "rcp-cat": b => { ui.rcpCat = b.dataset.c; saveUi(); render(); },
   "recipe-to-list": b => recipeToList(b.dataset.id),
   "recipe-to-dishes": b => { const r = recipeCache.get(b.dataset.id); if (!r) return; recipeToDishes(r); changed(); $("#sheetPanel").innerHTML = recipeSheetHtml(r);
     toast(`«${r.title}» μπήκε στα φαγητά σου`); },
   "recipe-to-day": b => { const r = recipeCache.get(b.dataset.id); if (r) openSheet(recipeDaySheet(r)); },
-  "recipe-edit": b => { const r = recipeCache.get(b.dataset.id); if (r) openSheet(recipeFormHtml(r)); },
+  "recipe-edit": b => { const r = recipeCache.get(b.dataset.id); if (r) openSheet(recipeFormHtml(r), { full: true }); },
   "recipe-del": async b => {
     const r = recipeCache.get(b.dataset.id);
     if (!r || !(await ask({ title: "Διαγραφή συνταγής;", text: `Η «${r.title}» θα σβηστεί για όλους.`, ok: "Διαγραφή", danger: true }))) return;
@@ -2222,7 +2225,7 @@ async function getRecipe(id) {
 }
 const recipeMeta = r => [
   r.m || r.time ? `${ic("clock")}${r.m ?? r.time}΄` : "",
-  r.k || r.kcal ? `${ic("flame")}${r.k ?? r.kcal} kcal` : "",
+  r.k || r.kcal ? `${ic("flame")}${r.k ?? r.kcal} kcal${r.kcal ? "/μερίδα" : ""}` : "",
   r.d || r.diff ? `${ic("chef")}${DIFF[r.d ?? r.diff]}` : ""].filter(Boolean).map(x => `<span>${x}</span>`).join("");
 function recipeThumb(r) {
   const c = RCAT[r.c || r.cat] || RCAT.other;
@@ -2273,28 +2276,34 @@ function recipeSheetHtml(r) {
   const c = RCAT[r.cat] || RCAT.other, mine = session && r.by === session.uid;
   const inList = ui.listId ? new Set(itemsOf(ui.listId).map(i => norm(i.name))) : new Set();
   const dish = doc.meals[dishKey(r.title)];
-  return `${r.img ? `<div class="rcp-hero"><img src="${imgUrl(r)}" alt=""></div>` : ""}
+  return `${fullBar(r.title)}
+    ${r.img ? `<div class="rcp-hero"><img src="${imgUrl(r)}" alt=""></div>` : ""}
+    <div class="rcp-content">
     <span class="rcp-c" style="--h:${c.hue}">${esc(c.name)}</span>
     <h2 class="sheet-title">${esc(r.title)}</h2>
-    <div class="rcp-m big">${recipeMeta(r)}${r.servings ? `<span>${r.servings} ${r.servings === 1 ? "μερίδα" : "μερίδες"}</span>` : ""}${r.kcal ? `<span class="muted small">θερμίδες ανά μερίδα</span>` : ""}</div>
+    <div class="rcp-m big">${recipeMeta(r)}${r.servings ? `<span>${r.servings} ${r.servings === 1 ? "μερίδα" : "μερίδες"}</span>` : ""}</div>
     <h3 class="rcp-h">Υλικά</h3>
     <ul class="rcp-ing">${r.ingredients.map((x, i) => { const p = parseIngredient(x), has = inList.has(norm(p.name));
       return `<li><label><input type="checkbox" data-ing="${i}" ${has ? "" : "checked"}><span>${esc(x)}</span>${has ? `<em>στη λίστα</em>` : ""}</label></li>`; }).join("")}</ul>
     <button type="button" class="btn wide" data-act="recipe-to-list" data-id="${r.id}">${ic("plus")}Βάλε τα επιλεγμένα στη λίστα</button>
     ${r.steps.length ? `<h3 class="rcp-h">Εκτέλεση</h3><ol class="rcp-steps">${r.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
     <div class="rcp-actions">
-      <button type="button" class="btn ghost" data-act="recipe-to-dishes" data-id="${r.id}"${dish && !dish.hidden && dish.r === r.id ? " disabled" : ""}>${ic("book")}${dish && !dish.hidden && dish.r === r.id ? "Είναι στα φαγητά σου" : "Στα φαγητά μου"}</button>
-      <button type="button" class="btn ghost" data-act="recipe-to-day" data-id="${r.id}">${ic("plus")}Στο πρόγραμμα</button>
-    </div>
-    ${mine ? `<div class="trip-minor"><button type="button" class="btn ghost" data-act="recipe-edit" data-id="${r.id}">${ic("edit")}Επεξεργασία</button>
-      <button type="button" class="btn ghost danger-text" data-act="recipe-del" data-id="${r.id}">${ic("trash")}Διαγραφή</button></div>` : ""}`;
+      <button type="button" class="btn ghost wide" data-act="recipe-to-dishes" data-id="${r.id}"${dish && !dish.hidden && dish.r === r.id ? " disabled" : ""}>${ic("book")}${dish && !dish.hidden && dish.r === r.id ? "Είναι στα φαγητά σου" : "Πρόσθεσε στα φαγητά μου"}</button>
+      <button type="button" class="btn ghost wide" data-act="recipe-to-day" data-id="${r.id}">${ic("plus")}Βάλε σε μέρα του προγράμματος</button>
+      ${mine ? `<div class="rcp-own"><button type="button" class="btn ghost" data-act="recipe-edit" data-id="${r.id}">${ic("edit")}Επεξεργασία</button>
+        <button type="button" class="btn ghost danger-text" data-act="recipe-del" data-id="${r.id}">${ic("trash")}Διαγραφή</button></div>` : ""}
+    </div></div>`;
 }
+// Μπάρα στην κορυφή των σελίδων πλήρους οθόνης: πίσω/κλείσιμο και τίτλος
+const fullBar = title => `<div class="full-bar"><button type="button" class="icon-btn" data-act="close-sheet" aria-label="Πίσω">${ic("left")}</button>
+  <span class="full-bar-t">${esc(title)}</span><button type="button" class="icon-btn" data-act="close-sheet" aria-label="Κλείσιμο">${ic("x")}</button></div>`;
 async function openRecipe(id) {
-  openSheet(`<p class="sheet-text">Φορτώνει η συνταγή…</p>`);
+  openSheet(`${fullBar("Συνταγή")}<p class="sheet-text rcp-content">Φορτώνει η συνταγή…</p>`, { full: true });
   try { const r = await getRecipe(id); if (!$("#sheet").hidden) $("#sheetPanel").innerHTML = recipeSheetHtml(r); }
-  catch (e) { if (!$("#sheet").hidden) $("#sheetPanel").innerHTML = `<p class="sheet-text">${esc(navigator.onLine ? e.message : "Η συνταγή θέλει σύνδεση στο internet.")}</p>`; }
+  catch (e) { if (!$("#sheet").hidden) $("#sheetPanel").innerHTML = `${fullBar("Συνταγή")}<p class="sheet-text rcp-content">${esc(navigator.onLine ? e.message : "Η συνταγή θέλει σύνδεση στο internet.")}</p>`; }
 }
 // Τα υλικά στην τρέχουσα λίστα (ή σε νέα, αν δεν υπάρχει ανοιχτή)
+const stemKey = n => looseWords(n).join(" ");
 function recipeToList(id) {
   const r = recipeCache.get(id);
   if (!r) return;
@@ -2314,7 +2323,11 @@ function recipeToList(id) {
   for (const line of lines) {
     const p = parseIngredient(line);
     // «πελτέ» -> Πελτές, «μαϊντανό» -> Μαϊντανός: το όνομα του καταλόγου, όταν ταιριάζει η κύρια λέξη
-    if (!BPROD.has(norm(p.name)) && !knownProducts().has(norm(p.name))) { const m = matchProduct(p.name, cands); if (m && m.score >= 10) p.name = m.name; }
+    // (ενικός/πληθυντικός: «κρεμμύδι» = τα «Κρεμμύδια» της λίστας ή του καταλόγου)
+    const sk = stemKey(p.name);
+    const same = itemsOf(l.id).find(i => stemKey(i.name) === sk) || cands.find(c => stemKey(c.name) === sk);
+    if (same) p.name = same.name;
+    else if (!BPROD.has(norm(p.name)) && !knownProducts().has(norm(p.name))) { const m = matchProduct(p.name, cands); if (m && m.score >= 10) p.name = m.name; }
     const res = addToList(l.id, line, { p });
     if (res.status === "added") added.push(res.item); else had++;
   }
@@ -2343,7 +2356,7 @@ let rcpImage = null; // { blob, url } ή "remove"
 function recipeFormHtml(r = {}) {
   rcpImage = null;
   const cat = r.cat || "";
-  return `<h2 class="sheet-title">${r.id ? "Επεξεργασία συνταγής" : "Νέα συνταγή"}</h2>
+  return `${fullBar(r.id ? "Επεξεργασία συνταγής" : "Νέα συνταγή")}<div class="rcp-content">
     <p class="sheet-text small">Οι συνταγές είναι δημόσιες: τις βλέπουν όλοι οι χρήστες της εφαρμογής.</p>
     <form data-form="recipe-save" data-id="${r.id || ""}" autocomplete="off" class="rcp-form">
       <label class="fld">Τίτλος<input class="field" name="title" value="${esc(r.title || "")}" required maxlength="100" spellcheck="${SPELL}" placeholder="π.χ. Φασολάδα"></label>
@@ -2363,7 +2376,7 @@ function recipeFormHtml(r = {}) {
       <label class="fld">Υλικά <span class="muted">ένα σε κάθε γραμμή</span><textarea class="field" name="ingredients" rows="7" required spellcheck="${SPELL}" placeholder="500 γρ. φασόλια μέτρια&#10;2 καρότα&#10;1 κρεμμύδι&#10;1 φλιτζάνι ελαιόλαδο">${esc((r.ingredients || []).join("\n"))}</textarea></label>
       <label class="fld">Εκτέλεση <span class="muted">ένα βήμα σε κάθε γραμμή</span><textarea class="field" name="steps" rows="7" spellcheck="${SPELL}" placeholder="Μουλιάζουμε τα φασόλια από το βράδυ.&#10;Τα βράζουμε 10 λεπτά και πετάμε το νερό.">${esc((r.steps || []).join("\n"))}</textarea></label>
       <div class="sheet-actions split"><button type="button" class="btn ghost" data-act="close-sheet">Άκυρο</button><button class="btn" type="submit">${r.id ? "Αποθήκευση" : "Δημοσίευση"}</button></div>
-    </form>`;
+    </form></div>`;
 }
 async function shrinkImage(file) {
   const bmp = await createImageBitmap(file);
@@ -2391,7 +2404,7 @@ async function saveRecipeForm(f, v) {
     recipeCache.set(r.id, r);
     loadRecipes(true);
     ui.tab = "meals"; ui.mealView = "recipes"; saveUi();
-    $("#sheetPanel").innerHTML = recipeSheetHtml(r);
+    $("#sheetPanel").innerHTML = recipeSheetHtml(r); $("#sheetPanel").scrollTop = 0;
     render();
     toast(body.id ? "Η συνταγή άλλαξε" : "Η συνταγή δημοσιεύτηκε");
   } catch (e) {
