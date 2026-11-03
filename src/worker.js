@@ -5,12 +5,16 @@
 //   sess:<token>    -> { uid, email }   (λήγει μετά από 1 χρόνο)
 //   doc:<uid>       -> το έγγραφο του χρήστη (λίστες, καταστήματα, προϊόντα, φαγητά)
 //   doc             -> το παλιό κοινό έγγραφο, πριν τους λογαριασμούς. Το παίρνει ο πρώτος λογαριασμός.
+//   shared:aliases  -> κοινές αντιστοιχίσεις αποδείξεων για όλους:
+//                      { "lidl|λωρ κο φιτ μπ ελ": { "Κοτόπουλο φιλέτο": { c: "meat", by: ["<uid>", ...] } } }
 //
 // POST /api/auth/register  { email, password } -> { token, email, uid, claimed }
 // POST /api/auth/login     { email, password } -> { token, email, uid }
 // POST /api/auth/logout
 // GET  /api/data           (Authorization: Bearer <token>)
 // POST /api/data           συγχώνευση με το αποθηκευμένο, επιστρέφει το αποτέλεσμα
+// GET  /api/aliases        οι κοινές αντιστοιχίσεις: { key: { t, c, n } } (n = πόσοι χρήστες το είπαν)
+// POST /api/aliases        { entries: [{ k, t, c }] } η «ψήφος» του χρήστη για κάθε συντομογραφία (μία εγγραφή KV)
 import { mergeDocs, emptyDoc, isDoc } from "../public/merge.js";
 
 const H = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -126,6 +130,48 @@ async function postData(request, env, s) {
   return json(out);
 }
 
+const ALIASES = "shared:aliases";
+const CATS = new Set(["veg", "meat", "deli", "dairy", "bread", "pantry", "sauce", "sweet", "frozen", "drinks", "paper", "clean", "care", "other"]);
+async function readAliases(env) {
+  try { return JSON.parse((await env.DATA.get(ALIASES)) || "{}"); } catch { return {}; }
+}
+async function getAliases(env) {
+  const all = await readAliases(env), out = {};
+  for (const [k, names] of Object.entries(all)) {
+    let best = null;
+    for (const [t, v] of Object.entries(names)) {
+      const n = (v.by || []).length;
+      if (n && (!best || n > best.n)) best = { t, c: v.c, n };
+    }
+    if (best) out[k] = best;
+  }
+  return json(out);
+}
+async function postAliases(request, env, s) {
+  const { data, error } = await readBody(request);
+  if (error) return error;
+  const entries = Array.isArray(data && data.entries) ? data.entries.slice(0, 300) : [];
+  const all = await readAliases(env);
+  let changed = false;
+  for (const e of entries) {
+    const k = String(e && e.k || "").trim(), t = String(e && e.t || "").trim().replace(/\s+/g, " ");
+    if (!/^[a-z*]{1,20}\|.{3,80}$/.test(k) || t.length < 2 || t.length > 60) continue;
+    const c = CATS.has(e.c) ? e.c : "other";
+    const names = all[k] || (all[k] = {});
+    // μία ψήφος ανά χρήστη: φεύγει από ό,τι είχε πει πριν για την ίδια συντομογραφία
+    for (const [name, v] of Object.entries(names)) {
+      if (name === t) continue;
+      const i = (v.by || []).indexOf(s.uid);
+      if (i >= 0) { v.by.splice(i, 1); changed = true; if (!v.by.length) delete names[name]; }
+    }
+    const cur = names[t] || (names[t] = { c, by: [] });
+    if (!cur.by.includes(s.uid)) { cur.by.push(s.uid); cur.by = cur.by.slice(-50); changed = true; }
+    if (cur.c !== c && cur.by.length === 1) { cur.c = c; changed = true; }
+  }
+  if (changed) await env.DATA.put(ALIASES, JSON.stringify(all));
+  return json({ ok: true, changed });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -142,6 +188,12 @@ export default {
       if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
       if (request.method === "GET") return getData(env, s);
       if (post) return postData(request, env, s);
+    }
+    if (pathname === "/api/aliases") {
+      const s = await auth(request, env);
+      if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
+      if (request.method === "GET") return getAliases(env);
+      if (post) return postAliases(request, env, s);
     }
     return fail(404, "Δεν βρέθηκε.");
   }

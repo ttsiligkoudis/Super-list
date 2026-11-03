@@ -1191,6 +1191,8 @@ function showReceipt(text, parsed) {
   const items = r.items.map(i => {
     const a = aliases[aliasKey(i.raw)];
     if (a && a.t && !a.deleted) return { name: a.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[a.c] ? a.c : guessCat(a.t) };
+    const sa = sharedAlias(r.store, aliasKey(i.raw));
+    if (sa) return { name: sa.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[sa.c] ? sa.c : guessCat(sa.t) };
     const m = matchProduct(i.raw, cands);
     const name = m ? m.name : niceName(i.raw);
     return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
@@ -1204,7 +1206,7 @@ function showReceipt(text, parsed) {
     const pairs = pairRcpt(items.map((i, k) => ({ k: String(k), name: i.name, raw: i.raw })), itemsOf(tg.l.id));
     for (const [k, it] of pairs) { items[+k].name = it.name; items[+k].cat = catOf(it); }
   }
-  rcpt = { text, items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
+  rcpt = { text, items, chain: r.store || "", store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
   rcptPairHint();
 }
@@ -1236,14 +1238,41 @@ function pairRcpt(rows, listItems) {
 }
 // Κλειδί για να θυμάται τις συντομογραφίες: μόνο τα κομμάτια με γράμματα, χωρίς τόνους
 const aliasKey = raw => norm(String(raw || "").split(/[\s.]+/).filter(p => p && !/\d/.test(p) && /\p{L}{2}/u.test(p)).join(" "));
-function rememberAlias(raw, name, cat) {
+// Κοινές αντιστοιχίσεις για όλους τους χρήστες (στο KV του server). Μια συντομογραφία χρησιμοποιείται
+// για άλλους όταν τη συμφωνούν 2+ χρήστες ή όταν το όνομα είναι προϊόν του βασικού καταλόγου.
+const SHARED_KEY = "mm-shared-aliases", SHARED_PEND = "mm-shared-pending";
+let shared = ls.get(SHARED_KEY, {});
+function loadShared() {
+  if (!session) return;
+  fetch("/api/aliases", { headers: { authorization: `Bearer ${session.token}` } })
+    .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d === "object") { shared = d; ls.set(SHARED_KEY, d); } flushShared(); }).catch(() => {});
+}
+function flushShared() {
+  const p = ls.get(SHARED_PEND, []);
+  if (!session || !p.length) return;
+  fetch("/api/aliases", { method: "POST", headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" }, body: JSON.stringify({ entries: p }) })
+    .then(r => { if (r.ok) ls.set(SHARED_PEND, []); }).catch(() => {});
+}
+function sharedAlias(chain, k) {
+  const a = shared[`${chain || "*"}|${k}`] || shared[`*|${k}`];
+  return a && a.t && (a.n >= 2 || BPROD.has(norm(a.t))) ? a : null;
+}
+let shareQueue = [];
+function rememberAlias(raw, name, cat, chain) {
   const k = aliasKey(raw);
   if (!k || !name || k.length < 3) return;
+  if (norm(name) === norm(niceName(raw))) return; // τίποτα να θυμηθεί
+  shareQueue.push({ k: `${chain || "*"}|${k}`, t: name, c: cat });
   doc.aliases = doc.aliases || {};
   const cur = doc.aliases[k];
   if (cur && cur.t === name && cur.c === cat) return;
-  if (!cur && norm(name) === norm(niceName(raw))) return; // τίποτα να θυμηθεί
   doc.aliases[k] = touch({ t: name, c: cat });
+}
+function sendShared() {
+  if (!shareQueue.length) return;
+  ls.set(SHARED_PEND, ls.get(SHARED_PEND, []).concat(shareQueue).slice(-300));
+  shareQueue = [];
+  flushShared();
 }
 const rcptRows = (root = document) => [...root.querySelectorAll(".rcpt-items li")].map(li => { const f = li.querySelector('[name^="n"]');
   return { k: li.dataset.k, li, name: f.value.trim(), raw: f.title, edited: f.value !== f.defaultValue }; });
@@ -1288,7 +1317,8 @@ function rcptReview() {
         <div class="money sm"><input class="field num${total && i.price > total ? " bad" : ""}" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
         <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
         ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
-      </li>`).join("")}</ul>` : `<p class="small muted">Δεν βρέθηκαν προϊόντα, θα αποθηκευτεί μόνο το ποσό.</p>`}
+      </li>`).join("")}</ul>
+      <p class="small muted rcpt-share">Τα ονόματα που διορθώνεις τα θυμάται για την επόμενη απόδειξη και, χωρίς στοιχεία σου, βοηθούν και τους άλλους χρήστες.</p>` : `<p class="small muted">Δεν βρέθηκαν προϊόντα, θα αποθηκευτεί μόνο το ποσό.</p>`}
       <details class="rcpt-paste"><summary>Το κείμενο που διαβάστηκε</summary>
         <p class="small muted">Αν κάτι βγήκε λάθος, διόρθωσέ το εδώ και πάτα «Ανάγνωση ξανά».</p>
         <textarea class="field" id="rcptRaw" rows="8" spellcheck="false">${esc(rcpt.text)}</textarea>
@@ -1315,6 +1345,7 @@ function saveReceipt(f, v) {
   const [y, m, d] = (v.date || "").split("-").map(Number);
   if (!y) return;
   let store = v.payStore || "";
+  const chain = (rcpt && rcpt.chain) || (store.startsWith("brand:") ? store.slice(6) : (brandOf(storeMap()[store]) || {}).id) || "";
   if (store.startsWith("brand:")) {
     const b = BRAND[store.slice(6)], st = stores();
     const s = touch({ id: uid(), name: b.name, brand: b.id, color: b.color, order: Math.max(0, ...st.map(x => x.order || 0)) + 1 });
@@ -1332,9 +1363,10 @@ function saveReceipt(f, v) {
     if (!name) continue;
     const cat = CAT[v["c" + k]] ? v["c" + k] : guessCat(name);
     doc.items.push(touch({ id: uid(), listId: l.id, name, qty: v["q" + k] || "", cat, store, done: true, order: n++, price: parseAmount(v["p" + k]) || undefined }));
-    rememberAlias(li.querySelector('[name^="n"]').title, name, cat);
+    rememberAlias(li.querySelector('[name^="n"]').title, name, cat, chain);
   }
   rcpt = null;
+  sendShared();
   ui.histView = "lists"; ui.histOpen = l.id; saveUi();
   changed();
   closeSheet();
@@ -1347,6 +1379,7 @@ function saveReceipt(f, v) {
 
 // Η απόδειξη συμπληρώνει λίστα που υπάρχει: τιμές στα προϊόντα που βρέθηκαν, τα υπόλοιπα προστίθενται, και το ποσό
 function saveReceiptInto(f, v, l, amount, store) {
+  const chain = (rcpt && rcpt.chain) || (brandOf(storeMap()[store]) || {}).id || "";
   const before = snapshot("lists", [l]).concat(snapshot("items", itemsOf(l.id)));
   const rows = rcptRows(f).filter(r => r.name);
   const pairs = pairRcpt(rows, itemsOf(l.id));
@@ -1354,7 +1387,7 @@ function saveReceiptInto(f, v, l, amount, store) {
   for (const r of rows) {
     const price = parseAmount(v["p" + r.k]) || undefined, it = pairs.get(r.k);
     if (it) {
-      rememberAlias(r.raw, it.name, catOf(it));
+      rememberAlias(r.raw, it.name, catOf(it), chain);
       it.price = price; it.done = true;
       if (store && !it.store) it.store = store;
       touch(it);
@@ -1362,12 +1395,13 @@ function saveReceiptInto(f, v, l, amount, store) {
       const ni = touch({ id: uid(), listId: l.id, name: r.name, qty: v["q" + r.k] || "", cat: CAT[v["c" + r.k]] ? v["c" + r.k] : guessCat(r.name),
         store, done: true, order: order++, price });
       doc.items.push(ni); added.push(ni);
-      rememberAlias(r.raw, ni.name, ni.cat);
+      rememberAlias(r.raw, ni.name, ni.cat, chain);
     }
   }
   if (amount) { l.amount = amount; l.payStore = store || l.payStore || ""; }
   touch(l);
   rcpt = null;
+  sendShared();
   ui.histView = "lists"; ui.histOpen = l.id; saveUi();
   changed();
   closeSheet();
@@ -1583,7 +1617,7 @@ const actions = {
   "aisle-toggle": b => { ui.collapsed = { ...(ui.collapsed || {}) }; ui.collapsed[b.dataset.c] = !ui.collapsed[b.dataset.c]; saveUi(); render(); },
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
-  "rcpt-sheet": () => openSheet(rcptSheet()),
+  "rcpt-sheet": () => { loadShared(); openSheet(rcptSheet()); },
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-reparse": () => { const t = $("#rcptRaw"); if (t && t.value.trim()) showReceipt(t.value); },
   "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); rcptPairHint(); },
