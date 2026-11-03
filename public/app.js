@@ -506,6 +506,8 @@ function historyView() {
           <span class="mk" aria-label="${i.done ? "Αγοράστηκε" : "Δεν αγοράστηκε"}">${i.done ? "✓" : "–"}</span>
           <span>${esc(i.name)}${i.qty ? ` <span class="muted">${esc(i.qty)}</span>` : ""}${sm[i.store] && i.store !== l.payStore ? ` <span class="muted">(${esc(sm[i.store].name)})</span>` : ""}</span>${i.price ? `<span class="li-price num">${eur(i.price)}</span>` : ""}</li>`).join("") + `</ul>`;
       }
+      if (Array.isArray(l.fees) && l.fees.length) body += `<h3><span class="sw" style="--h:#7d8b99"></span>Λοιπές χρεώσεις</h3><ul>` + l.fees.map(fe => `<li>
+          <span class="mk">·</span><span>${esc(fe.name)}</span><span class="li-price num">${eur(fe.price)}</span></li>`).join("") + `</ul>`;
       body = `<div class="trip-body">
         <form class="trip-pay" data-form="set-pay" data-id="${l.id}" autocomplete="off">${payFields(l)}
           <button class="btn ghost" type="submit">Αποθήκευση</button></form>
@@ -1192,7 +1194,8 @@ function showReceipt(text, parsed) {
   const cands = [...BPROD.values()].map(p => ({ name: p.name, cat: p.c }))
     .concat([...known.values()].map(i => ({ name: i.name, cat: catOf(i) })));
   const aliases = doc.aliases || {};
-  const items = r.items.map(i => {
+  const fees = r.items.filter(i => i.fee).map(i => ({ name: i.fee, price: i.price }));
+  const items = r.items.filter(i => !i.fee).map(i => {
     const a = aliases[aliasKey(i.raw)];
     if (a && a.t && !a.deleted) return { name: a.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[a.c] ? a.c : guessCat(a.t) };
     const sa = sharedAlias(r.store, aliasKey(i.raw));
@@ -1229,7 +1232,7 @@ function showReceipt(text, parsed) {
     const pairs = pairRcpt(items.map((i, k) => ({ k: String(k), name: i.name, raw: i.raw })), itemsOf(tg.l.id));
     for (const [k, it] of pairs) { items[+k].orig = items[+k].name; items[+k].origCat = items[+k].cat; items[+k].name = it.name; items[+k].cat = catOf(it); }
   }
-  rcpt = { text, items, chain: r.store || "", store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
+  rcpt = { text, items, fees, chain: r.store || "", store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
   rcptPairHint();
 }
@@ -1478,7 +1481,8 @@ function rcptReview() {
   const targets = rcptTargets(date, total);
   const note = (ok, what) => ok ? `<span class="rcpt-ok">${ic("check")}από την απόδειξη</span>` : `<span class="rcpt-miss">δεν βρέθηκε${what}, έλεγξέ το</span>`;
   const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  const sum = items.reduce((a, i) => a + i.price, 0);
+  const fees = rcpt.fees || [];
+  const sum = items.reduce((a, i) => a + i.price, 0) + fees.reduce((a, f) => a + f.price, 0);
   const amount = total || (sum ? Math.round(sum * 100) / 100 : null);
   const money = n => n.toFixed(2).replace(".", ",");
   return `<h2 class="sheet-title">Από την απόδειξη</h2>
@@ -1500,6 +1504,10 @@ function rcptReview() {
         <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
         ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
       </li>`).join("")}</ul>
+      ${fees.length ? `<div class="rcpt-fees"><h3>Λοιπές χρεώσεις</h3>
+        <p class="small muted">Χρεώσεις που δεν είναι προϊόντα (π.χ. περιβαλλοντικό τέλος για τις σακούλες). Μετράνε στο ποσό, όχι στα προϊόντα.</p>
+        <ul>${fees.map((f, k) => `<li><span>${esc(f.name)}</span><input type="hidden" name="fn${k}" value="${esc(f.name)}">
+          <div class="money sm"><input class="field num" name="fp${k}" data-fee inputmode="decimal" value="${money(f.price)}" aria-label="Ποσό"><span>€</span></div></li>`).join("")}</ul></div>` : ""}
       <p class="small muted rcpt-share">Τα ονόματα που διορθώνεις τα θυμάται για την επόμενη απόδειξη και, χωρίς στοιχεία σου, βοηθούν και τους άλλους χρήστες.</p>` : `<p class="small muted">Δεν βρέθηκαν προϊόντα, θα αποθηκευτεί μόνο το ποσό.</p>`}
       <details class="rcpt-paste"><summary>Το κείμενο που διαβάστηκε</summary>
         <p class="small muted">Αν κάτι βγήκε λάθος, διόρθωσέ το εδώ και πάτα «Ανάγνωση ξανά».</p>
@@ -1515,13 +1523,16 @@ function rcptReview() {
 }
 function rcptSumUpdate() {
   const lis = [...document.querySelectorAll(".rcpt-items li")];
-  const sum = lis.reduce((a, li) => a + (parseAmount(li.querySelector('[name^="p"]').value) || 0), 0);
+  const sum = lis.reduce((a, li) => a + (parseAmount(li.querySelector('[name^="p"]').value) || 0), 0)
+    + [...document.querySelectorAll("[data-fee]")].reduce((a, f) => a + (parseAmount(f.value) || 0), 0);
   const s = $("#rcptSum"), c = $("#rcptCount");
   if (s) { s.textContent = eur(sum); const t = parseAmount(($("#payAmt") || {}).value); s.classList.toggle("off", !!t && Math.abs(t - sum) > 0.009); }
   if (c) c.textContent = lis.length;
   const t = parseAmount(($("#payAmt") || {}).value);
   lis.forEach(li => { const f = li.querySelector('[name^="p"]'); f.classList.toggle("bad", !!t && (parseAmount(f.value) || 0) > t); });
 }
+// «Λοιπές χρεώσεις» της φόρμας: [{ name, price }]
+const readFees = v => Object.keys(v).filter(k => /^fp\d+$/.test(k)).map(k => ({ name: v["fn" + k.slice(2)] || "Λοιπές χρεώσεις", price: parseAmount(v[k]) })).filter(x => x.price);
 function saveReceipt(f, v) {
   const amount = parseAmount(f.querySelector("#payAmt").value);
   const [y, m, d] = (v.date || "").split("-").map(Number);
@@ -1537,7 +1548,7 @@ function saveReceipt(f, v) {
   const target = v.target ? findById("lists", v.target) : null;
   if (target && !target.deleted) return saveReceiptInto(f, v, target, amount, store);
   const t = new Date(y, m - 1, d, 12).getTime();
-  const l = touch({ id: uid(), name: `Ψώνια ${d}/${m}${y !== today.getFullYear() ? "/" + y : ""}`, createdAt: t, closedAt: t, amount, payStore: amount ? store : "", receipt: true });
+  const l = touch({ id: uid(), name: `Ψώνια ${d}/${m}${y !== today.getFullYear() ? "/" + y : ""}`, createdAt: t, closedAt: t, amount, payStore: amount ? store : "", receipt: true, fees: readFees(v) });
   doc.lists.push(l);
   let n = 0;
   for (const li of f.querySelectorAll(".rcpt-items li")) {
@@ -1581,6 +1592,8 @@ function saveReceiptInto(f, v, l, amount, store) {
     }
   }
   if (amount) { l.amount = amount; l.payStore = store || l.payStore || ""; }
+  const fees = readFees(v);
+  if (fees.length) l.fees = fees;
   touch(l);
   rcpt = null;
   sendShared();
@@ -1947,7 +1960,7 @@ document.addEventListener("input", e => {
     panel.querySelector(".lp-none").hidden = any || !q;
     return;
   }
-  if (e.target.closest && (e.target.closest(".rcpt-items") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); if (e.target.closest(".rcpt-items")) rcptPairHint(); return; }
+  if (e.target.closest && (e.target.closest(".rcpt-items") || e.target.matches("[data-fee]") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); if (e.target.closest(".rcpt-items")) rcptPairHint(); return; }
   if (e.target.id !== "pfind") return;
   const q = norm(e.target.value);
   let any = false;

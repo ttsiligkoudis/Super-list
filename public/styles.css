@@ -572,3 +572,8 @@ body.is-dragging .day input{pointer-events:none}
 .left-chips{display:flex;flex-wrap:wrap;gap:6px}
 .rcpt-left .link-panel{margin-top:4px}
 .lp-title{margin:0 2px;font-size:.88rem;font-weight:700}
+.rcpt-fees{display:grid;gap:6px}
+.rcpt-fees h3{margin:6px 0 0;font-size:1rem}
+.rcpt-fees p{margin:0}
+.rcpt-fees ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rcpt-fees li{display:grid;grid-template-columns:minmax(0,1fr) 96px 40px;gap:6px;align-items:center;color:var(--ink-2)}

@@ -215,7 +215,9 @@ export function parseReceipt(text, opts = {}) {
     if (price == null || (price <= 0 && !m.unknown) || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     if (m.alts) m.alts.cur = price;
-    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown });
+    // κρατικές χρεώσεις (περιβαλλοντικό τέλος σακούλας, εγγύηση φιάλης): όχι προϊόν, πάνε στις «Λοιπές χρεώσεις»
+    const fee = /περιβαλ|περιβαν|τελος ανακ|τελος σακ|εγγυησ|φορος|εισφορα/.test(keyOf(name)) ? (/εγγυησ/.test(keyOf(name)) ? "Εγγύηση συσκευασίας" : "Περιβαλλοντικό τέλος") : "";
+    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown, fee });
   }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
