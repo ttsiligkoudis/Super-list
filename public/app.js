@@ -1202,12 +1202,20 @@ function showReceipt(text, parsed) {
     // (με τις λέξεις της μάρκας μία-μία, πρώτα η πιο συνηθισμένη: «ΔΕΛΤΑ» -> γάλα πριν το γιαούρτι)
     // (αν η ίδια η γραμμή ταιριάζει σε προϊόν του διαδρόμου της μάρκας, π.χ. «MELISSA ΚΡΙΘ.» -> κριθαράκι, κερδίζει αυτό)
     // αλλιώς «Μάρκα + τι πουλάει» (Viakal καθαριστικό αλάτων, Wettex σπογγοπετσέτες)
+    // Με μάρκα: δεκτό ό,τι είναι στον διάδρομό της ή μοιάζει με κάτι που φτιάχνει («ΓΙΩΤΗΣ ΡΥΖΑΛΕΥΡΟ» -> ρυζάλευρο).
+    // Αλλιώς (π.χ. «HIPP ΒΑΖ.ΜΗΛΟ» -> μηλόξυδο) εμπιστευόμαστε τη μάρκα: ψάχνουμε στα δικά της ή γράφουμε «Μάρκα + τι πουλάει».
     let m = matchProduct(i.raw, cands);
-    if (br && (!m || m.cat !== br.cat)) m = matchProduct(i.raw, cands.filter(c => c.cat === br.cat)) || m;
-    if (!m && br) {
-      const first = br.words.split(",")[0].trim(), exact = cands.find(c => c.cat === br.cat && norm(c.name) === norm(first));
-      if (exact) m = exact;
-      else return { name: `${brandLabel(br)} ${first}`, raw: i.raw, price: i.price, qty: i.qty, cat: br.cat };
+    if (br) {
+      const heads = br.words.split(",").map(w => norm(w.trim()).split(" ")[0].slice(0, 5));
+      const fits = c => c.cat === br.cat || heads.some(h => norm(c.name).includes(h));
+      if (!m || !fits(m)) {
+        m = matchProduct(i.raw, cands.filter(fits));
+        if (!m) {
+          const first = br.words.split(",")[0].trim(), exact = cands.find(c => norm(c.name) === norm(first));
+          if (exact) m = exact;
+          else return { name: `${brandLabel(br)} ${first}`, raw: i.raw, price: i.price, qty: i.qty, cat: br.cat };
+        }
+      }
     }
     const name = m ? m.name : niceName(i.raw);
     return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
@@ -1272,9 +1280,12 @@ function detectBrand(raw) {
   const toks = String(raw || "").split(/[\s.,/()-]+/).map(brandTok).filter(Boolean);
   if (!toks.length) return null;
   const tp = toks.map(t => phon(t, false)); // χωρίς κόψιμο κατάληξης: «λακτε» (Farine Lactée) ≠ «λακτα»
+  // λατινικά που η απόδειξη/το OCR έκανε ελληνικά («HIPP» -> «ΗΙΡΡ»)
+  const G2L = { α: "a", β: "b", ε: "e", ζ: "z", η: "h", ι: "i", κ: "k", μ: "m", ν: "n", ο: "o", ρ: "p", τ: "t", υ: "y", χ: "x" };
+  const tl = toks.map(t => [...t].every(c => G2L[c] || /[0-9]/.test(c)) ? [...t].map(c => G2L[c] || c).join("") : null);
   // πόσο ταιριάζει η λέξη b της μάρκας με το κομμάτι i: ίδια = όλο το μήκος +2, συντομογραφία = όσα γράμματα γράφει
   const fit = (b, i, multi) => { const t = toks[i];
-    if (t === b || (b.length > 3 && phon(b, false) === tp[i])) return b.length + 2;
+    if (t === b || tl[i] === b || (b.length > 3 && phon(b, false) === tp[i])) return b.length + 2;
     if (b.length <= 3 || t.length < (multi ? 2 : 4)) return 0;
     if (!multi && PROD_WORDS.has(t)) return 0; // ολόκληρη λέξη προϊόντος («ΜΕΛΙ») δεν είναι συντομογραφία μάρκας («Μέλισσα»)
     if (b.startsWith(t)) return t.length;
