@@ -499,8 +499,8 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-err{background:color-mix(in srgb,var(--citrus,#e2a400) 18%,transparent);border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:.92rem}
 .rcpt-prog{padding:18px 0}
 .rcpt-prog p{margin:0 0 10px;font-weight:600}
-.rcpt-prog .bar{height:8px;border-radius:99px;background:color-mix(in srgb,var(--ink-2) 18%,transparent);overflow:hidden}
-.rcpt-prog .bar span{display:block;height:100%;background:var(--sea);border-radius:inherit;transition:width .3s}
+.rcpt-prog .pbar{height:10px;border-radius:99px;background:color-mix(in srgb,var(--ink-2) 18%,transparent);overflow:hidden}
+.rcpt-prog .pbar span{display:block;height:100%;background:var(--sea);border-radius:inherit;transition:width .3s}
 .rcpt{display:grid;gap:14px}
 .rcpt-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:4px}
 .rcpt-head h3{margin:0;font-size:1rem}
@@ -535,3 +535,8 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-miss{color:var(--danger)}
 .rcpt-note{margin:-6px 0 0}
 #rcptSum.off{color:var(--danger)}
+#rcptBox,.rcpt-prog,.rcpt-prog .pbar{width:100%;align-self:stretch}
+.rcpt .rcpt-paste{display:grid;gap:8px}
+.rcpt .rcpt-paste[open]{padding-bottom:4px}
+.rcpt .rcpt-paste textarea{font-family:ui-monospace,monospace;font-size:.82rem;min-height:160px}
+.rcpt-items .field.bad{border-color:var(--danger);color:var(--danger)}

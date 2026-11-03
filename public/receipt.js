@@ -91,6 +91,28 @@ const QTY_LINE = new RegExp(`^(\\d+(?:[.,]\\d+)?)\\s*(kg|κιλ[αό]?|κ\\S{0,2
 // Γραμμή για έλεγχο λέξεων-κλειδιών: λατινικά που μοιάζουν με ελληνικά γίνονται ελληνικά, πεζά, χωρίς τόνους
 const keyOf = l => [...l].map(c => HOMO[c] || c).join("").toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ς/g, "σ");
 
+// Γραμμή προϊόντος: «ΟΝΟΜΑ τιμή [ΦΠΑ]». Από δεξιά παίρνει τα «αριθμητικά» κομμάτια:
+// αν είναι δύο, το τελευταίο είναι το ΦΠΑ (π.χ. «13.00%», που το OCR μπορεί να δει σαν «153.002») και η τιμή το προηγούμενο.
+const MONEY_TOK = /^-?[\dΊΙIlOΟ]{1,4}[.,]\d{2,3}[%\d]?$/;
+function itemLine(l) {
+  const toks = l.split(" ");
+  const nums = [];
+  while (toks.length > 1) {
+    const t = toks[toks.length - 1].replace(/^[^\d\-ΊΙΟO]{1,2}(?=\d)/, "");
+    if (MONEY_TOK.test(t) || /^\d{1,2}[.,]?\d{0,2}%$/.test(t)) { nums.unshift(t); toks.pop(); }
+    else if (/^[A-EΑ-Ε*%]$/.test(t) && !nums.length) toks.pop();
+    else break;
+    if (nums.length === 3) break;
+  }
+  if (!nums.length) return null;
+  let p = nums.length >= 2 ? nums[nums.length - 2] : nums[0];
+  // μόνο ποσοστό ΦΠΑ, χωρίς τιμή
+  if (nums.length === 1 && (/%$/.test(p) || /^\d{1,2}\.\d{2}\d?$/.test(p) && /^(6|13|24|4|9|17)\./.test(p))) return null;
+  if (nums.length === 3) toks.push(nums[0]); // περισσευούμενο κομμάτι πάει στο όνομα
+  const price = num(p.replace(/[%]$/, ""));
+  return price ? { name: toks.join(" "), price } : null;
+}
+
 export function parseReceipt(text, opts = {}) {
   const raw = String(text || "").replace(/\r/g, "");
   const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
@@ -142,7 +164,6 @@ export function parseReceipt(text, opts = {}) {
 
   // προϊόντα: «ΟΝΟΜΑ ποσό [ΦΠΑ%]» μέχρι το σύνολο
   const items = [];
-  const itemRe = new RegExp(`^(.+?)\\s+(${MONEY})\\s*(?:\\d{1,2}[.,]\\d{2,3}\\s*[%29]?|\\d{1,2}\\s*%|[A-EΑ-Ε*]|%)?\\s*$`);
   for (const l of lines) {
     const n = l.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
     if (/^(γενικο )?[σζ]υνο[λα]ο(?! (φπα|τεμ|ειδ))|^πληρωτε|^total/.test(keyOf(l)) && items.length) break;
@@ -160,10 +181,10 @@ export function parseReceipt(text, opts = {}) {
       continue;
     }
     if (SKIP.test(n)) continue;
-    const m = l.match(itemRe);
+    const m = itemLine(l);
     if (!m) continue;
-    const price = num(m[2]);
-    let name = m[1].replace(/\s*\.\s*/g, ".").trim();
+    const price = m.price;
+    let name = m.name.replace(/\s*\.\s*/g, ".").trim();
     if (price == null || price <= 0 || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     items.push({ raw: name, price, qty: "" });
@@ -176,26 +197,29 @@ export function parseReceipt(text, opts = {}) {
 // Η λέξη ξεκινά με το token, με ανοχή ενός λάθους γράμματος για tokens 4+ γραμμάτων (λάθη OCR)
 function near(w, t) {
   if (w.startsWith(t)) return true;
-  if (t.length < 4 || w.length < t.length) return false;
+  if (t.length < 5 || w.length < t.length) return false;
   let diff = 0;
-  for (let i = 0; i < t.length; i++) if (w[i] !== t[i] && ++diff > 1) return false;
+  for (let i = 0; i < t.length; i++) if (w[i] !== t[i] && (++diff > 1 || i === t.length - 1)) return false;
   return true;
 }
-const plain = s => String(s).toLocaleLowerCase("el").normalize("NFD").replace(/[̀-ͯ]/g, "");
+const plain = s => String(s).toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// Ταίριασμα με κάθε λέξη της απόδειξης: «ΝΟΥ.ΣΑΜ.ΓΑΛ.ΠΛΗ» -> «Γάλα φρέσκο πλήρες», «CO.ΜΟΥΣΤ.CL» -> «Μουστάρδα».
+// Η πρώτη λέξη του προϊόντος (το «τι είναι») πρέπει να ταιριάζει σε κάποιο κομμάτι 3+ γραμμάτων.
 export function matchProduct(rawName, candidates) {
   const toks = plain(rawName).split(/[^a-zα-ω]+/).filter(t => t.length >= 2 && !/^(gr?|kg|ml|cl|lt|tem|τεμ|g)$/.test(t));
-  const strong = toks.filter(t => t.length >= 3);
-  if (!strong.length || strong[0] !== toks[0]) return null;
+  const strong = toks.filter(t => t.length >= 3), short = toks.filter(t => t.length < 3);
+  if (!strong.length) return null;
   let best = null;
   for (const c of candidates) {
     const words = plain(c.name).split(/[^a-zα-ω0-9]+/).filter(Boolean);
-    const hits = t => words.some(w => near(w, t) || (t.length >= 5 && t.startsWith(w) && w.length >= 4));
-    if (!hits(toks[0])) continue;
-    const hs = strong.filter(hits), shortHits = toks.filter(t => t.length < 3 && hits(t)).length;
-    // αρκετή απόδειξη: τα μισά tokens, και αν ταιριάζει μόνο ένα από πολλά, να είναι μεγάλο ή να το στηρίζουν συντομογραφίες
-    if (hs.length / strong.length < 0.5) continue;
-    if (hs.length === 1 && strong.length > 1 && hs[0].length < 7 && shortHits < 2) continue;
-    const score = hs.length / strong.length + (hs.length + shortHits) * 0.01 - words.length * 0.001;
+    if (!words.length) continue;
+    const head = words[0];
+    const headTok = strong.find(t => near(head, t) || (t.length >= 5 && t.startsWith(head) && head.length >= 4));
+    if (!headTok) continue;
+    const hit = t => words.some(w => near(w, t) || (t.length >= 5 && t.startsWith(w) && w.length >= 4));
+    const hs = strong.filter(hit).length, sh = short.filter(t => words.slice(1).some(w => w.startsWith(t))).length;
+    // πόσο σίγουρο: περισσότερα κοινά κομμάτια, μετά μεγαλύτερο κομμάτι στο «τι είναι», μετά πιο σύντομο όνομα
+    const score = hs + sh * 0.3 + Math.min(headTok.length, 8) * 0.02 - words.length * 0.01 - head.length * 0.001;
     if (!best || score > best.score) best = { ...c, score };
   }
   return best;

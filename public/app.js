@@ -1130,7 +1130,7 @@ async function prepImage(file) {
 async function readReceiptFile(file) {
   const box = $("#rcptBox");
   if (!box) return;
-  const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="bar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
+  const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
   say("Ετοιμάζω την ανάγνωση…", 0.02);
   ocrProgress = m => {
     if (m.status === "recognizing text") say("Διαβάζω την απόδειξη…", 0.3 + m.progress * 0.7);
@@ -1162,7 +1162,7 @@ function showReceipt(text) {
   // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
   const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
   const t = r.date ? new Date(r.date.y, r.date.m - 1, r.date.d) : new Date();
-  rcpt = { items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
+  rcpt = { text, items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
 }
 function rcptReview() {
@@ -1182,10 +1182,15 @@ function rcptReview() {
         <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
       <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">
         <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}">
-        <div class="money sm"><input class="field num" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
+        <div class="money sm"><input class="field num${total && i.price > total ? " bad" : ""}" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
         <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
         ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
       </li>`).join("")}</ul>` : `<p class="small muted">Δεν βρέθηκαν προϊόντα, θα αποθηκευτεί μόνο το ποσό.</p>`}
+      <details class="rcpt-paste"><summary>Το κείμενο που διαβάστηκε</summary>
+        <p class="small muted">Αν κάτι βγήκε λάθος, διόρθωσέ το εδώ και πάτα «Ανάγνωση ξανά».</p>
+        <textarea class="field" id="rcptRaw" rows="8" spellcheck="false">${esc(rcpt.text)}</textarea>
+        <button class="btn ghost" type="button" data-act="rcpt-reparse">Ανάγνωση ξανά</button>
+      </details>
       <div class="sheet-actions split">
         <button class="btn ghost" type="button" data-act="rcpt-sheet">Άλλη φωτογραφία</button>
         <button class="btn" type="submit">Αποθήκευση</button>
@@ -1198,6 +1203,8 @@ function rcptSumUpdate() {
   const s = $("#rcptSum"), c = $("#rcptCount");
   if (s) { s.textContent = eur(sum); const t = parseAmount(($("#payAmt") || {}).value); s.classList.toggle("off", !!t && Math.abs(t - sum) > 0.009); }
   if (c) c.textContent = lis.length;
+  const t = parseAmount(($("#payAmt") || {}).value);
+  lis.forEach(li => { const f = li.querySelector('[name^="p"]'); f.classList.toggle("bad", !!t && (parseAmount(f.value) || 0) > t); });
 }
 function saveReceipt(f, v) {
   const amount = parseAmount(f.querySelector("#payAmt").value);
@@ -1437,6 +1444,7 @@ const actions = {
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
   "rcpt-sheet": () => openSheet(rcptSheet()),
+  "rcpt-reparse": () => { const t = $("#rcptRaw"); if (t && t.value.trim()) showReceipt(t.value); },
   "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); },
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
