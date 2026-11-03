@@ -1309,18 +1309,21 @@ async function findQr(file) {
 // HTML -> κείμενο: κάθε γραμμή πίνακα με tabs, το υπόλοιπο ένα κομμάτι ανά γραμμή (όπως το διαβάζει το parseProviderDoc)
 function htmlToText(html) {
   const d = new DOMParser().parseFromString(html, "text/html");
-  d.querySelectorAll("script,style,noscript,template").forEach(e => e.remove());
+  d.querySelectorAll("script,style,noscript").forEach(e => e.remove());
   const out = [], clean = t => t.replace(/\s+/g, " ").trim();
   const walk = el => {
     for (const n of el.childNodes) {
       if (n.nodeType === 3) { const t = clean(n.textContent); if (t) out.push(t); }
       else if (n.nodeType === 1) {
         if (n.tagName === "TR") out.push([...n.children].map(c => clean(c.textContent)).join("\t"));
+        // Blazor (streaming rendering): το τελικό περιεχόμενο έρχεται μέσα σε <template> στο τέλος της σελίδας
+        else if (n.tagName === "TEMPLATE") walk(n.content);
+        else if (/^(SCRIPT|STYLE|NOSCRIPT)$/.test(n.tagName)) continue;
         else walk(n);
       }
     }
   };
-  if (d.body) walk(d.body);
+  walk(d.documentElement);
   return out.join("\n");
 }
 let rcptExact = false, rcptQrUrl = "", rcptQrWhy = "";
@@ -1343,7 +1346,9 @@ async function readReceiptDoc(url, say) {
       const apis = [...new Set([...body.matchAll(/["'](\/?[\w\/.-]*api[\w\/.-]*)["']/gi)].map(m => m[1]))].slice(0, 6);
       rcptQrWhy = [`Τελική διεύθυνση: ${r.headers.get("x-final-url") || url}`, `Τύπος: ${r.headers.get("content-type") || "?"}, ${body.length} χαρακτήρες`,
         title && `Τίτλος: ${title.trim()}`, scripts.length && `Scripts: ${scripts.join(", ")}`, apis.length && `API: ${apis.join(", ")}`,
-        `Αρχή κειμένου: ${text.slice(0, 300).replace(/\s+/g, " ")}`].filter(Boolean).join("\n");
+        `Templates: ${(body.match(/<template/gi) || []).length}, πίνακες: ${(body.match(/<table/gi) || []).length}, «Περιγραφή» στο κείμενο: ${/περιγραφ/i.test(text) ? "ναι" : "όχι"}`,
+        `Αρχή κειμένου: ${text.slice(0, 300).replace(/\s+/g, " ")}`,
+        `Τέλος σελίδας: ${body.slice(-300).replace(/\s+/g, " ")}`].filter(Boolean).join("\n");
       return false;
     }
     rcptShots = []; rcptExact = true;
