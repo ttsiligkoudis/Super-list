@@ -3,6 +3,7 @@ import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
 import { BUILTIN_PRODUCTS } from "./products.js";
 import { parseReceipt, matchProduct, niceName, mergeLatin } from "./receipt.js";
+import { PRODUCT_BRANDS } from "./brands.js";
 
 /* ---------- constants ---------- */
 
@@ -1196,9 +1197,17 @@ function showReceipt(text, parsed) {
     if (a && a.t && !a.deleted) return { name: a.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[a.c] ? a.c : guessCat(a.t) };
     const sa = sharedAlias(r.store, aliasKey(i.raw));
     if (sa) return { name: sa.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[sa.c] ? sa.c : guessCat(sa.t) };
-    const m = matchProduct(i.raw, cands);
+    // με μάρκα: ψάχνει πρώτα στον διάδρομό της, με τις λέξεις της μάρκας («FAIRY» -> «Απορρυπαντικό πιάτων»)
+    const br = detectBrand(i.raw);
+    // (με τις λέξεις της μάρκας μία-μία, πρώτα η πιο συνηθισμένη: «ΔΕΛΤΑ» -> γάλα πριν το γιαούρτι)
+    // (αν η ίδια η γραμμή ταιριάζει σε προϊόν του διαδρόμου της μάρκας, π.χ. «MELISSA ΚΡΙΘ.» -> κριθαράκι, κερδίζει αυτό)
+    let m = matchProduct(i.raw, cands);
+    if (br && (!m || m.cat !== br.cat)) { const inCat = cands.filter(c => c.cat === br.cat);
+      let bm = matchProduct(i.raw, inCat);
+      if (!bm) for (const w of br.words.split(",")) if ((bm = matchProduct(`${i.raw} ${w.trim()}`, inCat))) break;
+      m = bm || m; }
     const name = m ? m.name : niceName(i.raw);
-    return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
+    return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : br ? br.cat : guessCat(name) };
   });
   // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
   const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
@@ -1250,6 +1259,38 @@ function looseScore(text, name, prefix = false) {
   if (hit[0]) return (iw[0].length >= 4 ? 8 : 4) + n + bonus;
   return iw.some((w, i) => hit[i] && w.length >= 5) ? 4 + n + bonus : 0;
 }
+// Μάρκες: «FAIRY MAX» -> καθαριστικά, «απορρυπαντικό πιάτων». Κάθε λέξη της μάρκας πρέπει να βρεθεί στη γραμμή
+// (ίδια, ίδια στη «φωνητική» γραφή, ή συντομογραφία της). Κερδίζει η μάρκα με τα περισσότερα γράμματα.
+const brandTok = w => norm(w).replace(/[^\p{L}\p{N}&]/gu, "");
+const BRAND_IDX = PRODUCT_BRANDS.map(([v, cat, words]) => ({ name: v.split("|")[0], cat, words,
+  vars: v.split("|").map(x => x.trim().split(/\s+/).map(brandTok).filter(Boolean)) }));
+function detectBrand(raw) {
+  const toks = String(raw || "").split(/[\s.,/()-]+/).map(brandTok).filter(Boolean);
+  if (!toks.length) return null;
+  const tp = toks.map(phon);
+  // πόσο ταιριάζει η λέξη b της μάρκας με το κομμάτι i: ίδια = όλο το μήκος +2, συντομογραφία = όσα γράμματα γράφει
+  const fit = (b, i, multi) => { const t = toks[i];
+    if (t === b || (b.length > 3 && phon(b) === tp[i])) return b.length + 2;
+    if (b.length <= 3 || t.length < (multi ? 2 : 4)) return 0;
+    if (b.startsWith(t)) return t.length;
+    return t.startsWith(b) && t.length - b.length <= 3 ? b.length : 0; };
+  let best = null;
+  for (const br of BRAND_IDX) for (const v of br.vars) {
+    // σε μάρκες 3+ λέξεων αρκούν όλες εκτός από μία (το OCR χαλάει συχνά μία, π.χ. «ΜΥΔ ΑΓ.ΓΕΩΡ»)
+    let sc = 0, strong = false, miss = v.length >= 3 ? 1 : 0;
+    const used = new Set();
+    for (const b of v) {
+      let f = 0, at = -1;
+      toks.forEach((_, i) => { if (used.has(i)) return; const x = fit(b, i, v.length > 1); if (x > f) { f = x; at = i; } });
+      if (!f) { if (miss-- > 0) continue; sc = 0; break; }
+      used.add(at); sc += f; if (f >= 4) strong = true;
+    }
+    if (!strong) sc = 0;
+    if (sc && (!best || sc > best.sc)) best = { ...br, sc };
+  }
+  return best;
+}
+const withBrand = raw => { const b = detectBrand(raw); return b ? `${raw} ${b.words.replace(/,/g, "")}` : raw; };
 // Ζευγάρια γραμμή απόδειξης -> προϊόν της λίστας: όλα τα πιθανά ζευγάρια με βαθμό, και κρατιούνται τα καλύτερα
 function pairRcpt(rows, listItems) {
   const cand = [];
@@ -1258,10 +1299,14 @@ function pairRcpt(rows, listItems) {
   for (const r of rows) for (const it of listItems) {
     const c = [{ name: it.name, id: it.id }];
     const exact = !!r.name && norm(it.name) === norm(r.name);
-    const ns = r.name ? matchProduct(r.name, c) : null, rs = r.raw && !r.edited ? matchProduct(r.raw, c) : null;
-    const ls = Math.max(looseScore(r.name, it.name), r.edited ? 0 : looseScore(r.raw, it.name, true));
-    if (!exact && !ns && !rs && !ls) continue;
-    cand.push({ r, it, sc: (exact ? 30 : 0) + (rs ? rs.score : 0) + (ns ? ns.score * 0.5 : 0) + ls * 0.8 });
+    const raw = r.raw && !r.edited ? r.raw : "";
+    const ns = r.name ? matchProduct(r.name, c) : null, rs = raw ? matchProduct(raw, c) : null;
+    const ls = Math.max(looseScore(r.name, it.name), raw ? looseScore(raw, it.name, true) : 0);
+    // η μάρκα βοηθάει, αλλά λιγότερο από ό,τι γράφει η ίδια η απόδειξη («MELISSA ΚΡΙΘ.» = κριθαράκι, όχι μακαρόνια)
+    const br = raw ? (r.brand === undefined ? (r.brand = detectBrand(raw)) : r.brand) : null;
+    const bs = br ? looseScore(br.words.replace(/,/g, " "), it.name) : 0;
+    if (!exact && !ns && !rs && !ls && !bs) continue;
+    cand.push({ r, it, sc: (exact ? 30 : 0) + (rs ? rs.score : 0) + (ns ? ns.score * 0.5 : 0) + ls * 0.8 + bs * 0.5 + (bs && br.cat === catOf(it) ? 2 : 0) });
   }
   cand.sort((x, y) => y.sc - x.sc);
   const out = new Map(), used = new Set();
@@ -1368,7 +1413,7 @@ function linkRow(k) {
   const free = items.filter(i => !usedElsewhere.has(i.id));
   // προτάσεις πρώτα: όσα μοιάζουν με τη γραμμή, μετά αλφαβητικά
   const sc = new Map(free.map(i => { const c = [{ name: i.name, id: i.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c);
-    return [i.id, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, i.name), looseScore(r.raw, i.name, true))]; }));
+    return [i.id, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, i.name), looseScore(withBrand(r.raw), i.name, true))]; }));
   free.sort((a, b) => (b.id === (cur && cur.id)) - (a.id === (cur && cur.id)) || sc.get(b.id) - sc.get(a.id) || a.name.localeCompare(b.name, "el"));
   const opts = free.map(i => ({ act: "link-pick", k, id: i.id, label: i.name, icon: cur && cur.id === i.id ? "check" : "", cls: cur && cur.id === i.id ? "cur" : sc.get(i.id) > 0 ? "sugg" : "", note: cur && cur.id === i.id ? "τώρα" : sc.get(i.id) > 0 ? "μοιάζει" : "" }));
   opts.push({ act: "link-pick", k, id: "new", label: "Νέο προϊόν, δεν ήταν στη λίστα", icon: "plus", cls: "new" });
@@ -1382,7 +1427,7 @@ function leftItem(id) {
   const box = $(".rcpt-left");
   document.querySelectorAll(".link-panel").forEach(x => x.remove());
   const sc = new Map(free.map(r => { const c = [{ name: it.name, id: it.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c);
-    return [r.k, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, it.name), looseScore(r.raw, it.name, true))]; }));
+    return [r.k, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, it.name), looseScore(withBrand(r.raw), it.name, true))]; }));
   free.sort((a, b) => sc.get(b.k) - sc.get(a.k));
   const price = k => { const f = document.querySelector(`[name="p${k}"]`); return f ? f.value + " €" : ""; };
   const opts = free.map(r => ({ act: "link-pick", k: r.k, id, label: r.name, note: price(r.k), cls: sc.get(r.k) > 0 ? "sugg" : "" }));
