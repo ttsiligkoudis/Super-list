@@ -506,6 +506,10 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-head h3{margin:0;font-size:1rem}
 .rcpt-items{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .rcpt-items li{display:grid;grid-template-columns:minmax(0,1fr) 96px 40px;gap:6px;align-items:center}
+.rcpt-items .in-list{grid-column:1/-1;margin:-2px 0 4px 4px;font-size:.78rem;color:var(--basil);display:flex;align-items:center;gap:4px;font-weight:600}
+.rcpt-items .in-list .ic{width:13px;height:13px}
+.rcpt-target .radios label span .muted{font-weight:500}
+#rcptPair{margin:2px 0 0;font-size:.85rem;line-height:1.4}
 .rcpt-items .field{min-height:42px;padding:8px 10px;font-size:.95rem}
 .money.sm .field{font-size:.95rem;padding-right:26px;text-align:right}
 .money.sm span{right:9px}

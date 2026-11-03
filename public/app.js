@@ -1195,9 +1195,50 @@ function showReceipt(text, parsed) {
   const t = r.date ? new Date(r.date.y, r.date.m - 1, r.date.d) : new Date();
   rcpt = { text, items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
+  rcptPairHint();
+}
+// Λίστες του ιστορικού που μπορεί να είναι τα ίδια ψώνια: κλεισμένες λίγο πριν ή μετά την ημερομηνία της απόδειξης
+function rcptTargets(date) {
+  const t = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(), day = 864e5;
+  return closedLists().filter(l => !l.receipt && l.closedAt >= t - day && l.closedAt < t + 5 * day)
+    .sort((a, b) => Math.abs(a.closedAt - t - day / 2) - Math.abs(b.closedAt - t - day / 2)).slice(0, 3);
+}
+// Ζευγάρια: γραμμή απόδειξης -> προϊόν της λίστας (πρώτα ίδιο όνομα, μετά με τις λέξεις)
+function pairRcpt(rows, listItems) {
+  const free = new Map(listItems.map(i => [i.id, i]));
+  const out = new Map();
+  for (const r of rows) {
+    const hit = [...free.values()].find(i => norm(i.name) === norm(r.name));
+    if (hit) { out.set(r.k, hit); free.delete(hit.id); }
+  }
+  for (const r of rows) {
+    if (out.has(r.k) || !free.size) continue;
+    const cands = [...free.values()].map(i => ({ name: i.name, id: i.id }));
+    const m = matchProduct(r.name, cands) || (r.raw ? matchProduct(r.raw, cands) : null);
+    if (m) { out.set(r.k, free.get(m.id)); free.delete(m.id); }
+  }
+  return out;
+}
+const rcptRows = (root = document) => [...root.querySelectorAll(".rcpt-items li")].map(li => ({
+  k: li.dataset.k, li, name: li.querySelector('[name^="n"]').value.trim(), raw: li.querySelector('[name^="n"]').title }));
+function rcptPairHint() {
+  const el = $("#rcptPair"), sel = $('input[name="target"]:checked');
+  if (!el) return;
+  const l = sel && sel.value ? findById("lists", sel.value) : null;
+  document.querySelectorAll(".rcpt-items .in-list").forEach(x => x.remove());
+  if (!l) { el.textContent = "Θα γίνει νέα λίστα στο ιστορικό."; return; }
+  const rows = rcptRows(), pairs = pairRcpt(rows, itemsOf(l.id));
+  for (const r of rows) {
+    const it = pairs.get(r.k);
+    if (it && norm(it.name) !== norm(r.name)) r.li.insertAdjacentHTML("beforeend", `<span class="in-list">${ic("check")}${esc(it.name)}</span>`);
+    else if (it) r.li.insertAdjacentHTML("beforeend", `<span class="in-list">${ic("check")}στη λίστα</span>`);
+  }
+  const extra = rows.length - pairs.size;
+  el.textContent = `${pairs.size} από ${rows.length} προϊόντα βρέθηκαν στη λίστα και θα πάρουν την τιμή τους.${extra ? ` ${extra === 1 ? "Το άλλο θα προστεθεί" : `Τα άλλα ${extra} θα προστεθούν`} στη λίστα.` : ""} Μπαίνει και το συνολικό ποσό.`;
 }
 function rcptReview() {
   const { items, total, date, store, brand, gotDate } = rcpt;
+  const targets = rcptTargets(date);
   const note = (ok, what) => ok ? `<span class="rcpt-ok">${ic("check")}από την απόδειξη</span>` : `<span class="rcpt-miss">δεν βρέθηκε${what}, έλεγξέ το</span>`;
   const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const sum = items.reduce((a, i) => a + i.price, 0);
@@ -1207,6 +1248,11 @@ function rcptReview() {
     <p class="sheet-text small">Έλεγξε τα στοιχεία πριν την αποθήκευση. Οι αποδείξεις γράφουν συντομογραφίες, οπότε διόρθωσε ό,τι ονόματα δεν βγήκαν σωστά.</p>
     <form data-form="rcpt-save" autocomplete="off" class="rcpt">
       <label class="fld"><span class="fld-row">Ημερομηνία ${note(gotDate, ", μπήκε η σημερινή")}</span><input class="field" type="date" name="date" value="${iso}" required></label>
+      ${targets.length ? `<div class="pay rcpt-target"><span class="pay-l">Είναι ψώνια που έχεις ήδη στο ιστορικό;</span>
+        <div class="radios">${targets.map((l, i) => { const d = new Date(l.closedAt), n = itemsOf(l.id).length;
+          return `<label><input type="radio" name="target" value="${l.id}"${i ? "" : " checked"}><span>${esc(l.name)} <span class="muted">${d.getDate()}/${d.getMonth() + 1}${n ? ` · ${n} προϊόντα` : ""}</span></span></label>`; }).join("")}
+          <label><input type="radio" name="target" value=""><span>Όχι, νέα λίστα</span></label></div>
+        <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
@@ -1249,6 +1295,8 @@ function saveReceipt(f, v) {
     doc.stores.push(s);
     store = s.id;
   }
+  const target = v.target ? findById("lists", v.target) : null;
+  if (target && !target.deleted) return saveReceiptInto(f, v, target, amount, store);
   const t = new Date(y, m - 1, d, 12).getTime();
   const l = touch({ id: uid(), name: `Ψώνια ${d}/${m}${y !== today.getFullYear() ? "/" + y : ""}`, createdAt: t, closedAt: t, amount, payStore: amount ? store : "", receipt: true });
   doc.lists.push(l);
@@ -1266,6 +1314,37 @@ function saveReceipt(f, v) {
   toast(`Προστέθηκε η απόδειξη${amount ? `: ${eur(amount)}` : ""}${n ? `, ${n} προϊόντα` : ""}`, { label: "Αναίρεση", run: () => {
     l.deleted = true; touch(l);
     alive(doc.items).filter(i => i.listId === l.id).forEach(i => { i.deleted = true; touch(i); });
+    changed();
+  } });
+}
+
+// Η απόδειξη συμπληρώνει λίστα που υπάρχει: τιμές στα προϊόντα που βρέθηκαν, τα υπόλοιπα προστίθενται, και το ποσό
+function saveReceiptInto(f, v, l, amount, store) {
+  const before = snapshot("lists", [l]).concat(snapshot("items", itemsOf(l.id)));
+  const rows = rcptRows(f).filter(r => r.name);
+  const pairs = pairRcpt(rows, itemsOf(l.id));
+  let order = Math.max(0, ...itemsOf(l.id).map(i => i.order || 0)) + 1, added = [];
+  for (const r of rows) {
+    const price = parseAmount(v["p" + r.k]) || undefined, it = pairs.get(r.k);
+    if (it) {
+      it.price = price; it.done = true;
+      if (store && !it.store) it.store = store;
+      touch(it);
+    } else {
+      const ni = touch({ id: uid(), listId: l.id, name: r.name, qty: v["q" + r.k] || "", cat: CAT[v["c" + r.k]] ? v["c" + r.k] : guessCat(r.name),
+        store, done: true, order: order++, price });
+      doc.items.push(ni); added.push(ni);
+    }
+  }
+  if (amount) { l.amount = amount; l.payStore = store || l.payStore || ""; }
+  touch(l);
+  rcpt = null;
+  ui.histView = "lists"; ui.histOpen = l.id; saveUi();
+  changed();
+  closeSheet();
+  toast(`Ενημερώθηκε η λίστα${amount ? `: ${eur(amount)}` : ""}, τιμές σε ${pairs.size}${added.length ? `, ${added.length} νέα` : ""}`, { label: "Αναίρεση", run: () => {
+    restore(before);
+    added.forEach(i => { i.deleted = true; touch(i); });
     changed();
   } });
 }
@@ -1478,7 +1557,7 @@ const actions = {
   "rcpt-sheet": () => openSheet(rcptSheet()),
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-reparse": () => { const t = $("#rcptRaw"); if (t && t.value.trim()) showReceipt(t.value); },
-  "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); },
+  "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); rcptPairHint(); },
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
   "products-sheet": () => { if (ui.listId) openSheet(productsSheet()); },
   "prod-add": b => {
@@ -1594,6 +1673,7 @@ document.addEventListener("toggle", e => {
 document.addEventListener("change", e => {
   const el = e.target;
   if (el.id === "rcptFile") { if (el.files[0]) readReceiptFile(el.files[0]); return; }
+  if (el.name === "target" && el.closest(".rcpt")) { rcptPairHint(); return; }
   if (el.name === "cat" && el.closest("#catPicker")) {
     const p = el.closest("#catPicker"), c = CAT[el.value];
     p.querySelector(".picked").textContent = c.name;
@@ -1611,7 +1691,7 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("input", e => {
-  if (e.target.closest && (e.target.closest(".rcpt-items") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); return; }
+  if (e.target.closest && (e.target.closest(".rcpt-items") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); if (e.target.closest(".rcpt-items")) rcptPairHint(); return; }
   if (e.target.id !== "pfind") return;
   const q = norm(e.target.value);
   let any = false;
