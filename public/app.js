@@ -1866,6 +1866,8 @@ const actions = {
     if (!res || !res.ok) { toast("Δεν σβήστηκε. Δοκίμασε ξανά με internet."); return; }
     recipeCache.delete(r.id); recipes = recipes.filter(x => x.id !== r.id); ls.set("mm-recipes", recipes); render(); toast("Η συνταγή σβήστηκε");
   },
+  "ing-add": () => addIngredient(),
+  "ing-del": b => { const li = b.closest("li"), list = li.parentElement; li.remove(); const c = $("#ingCount"); if (c) c.textContent = list.children.length || ""; },
   "rcp-pic-del": b => { rcpImage = "remove"; $("#rcpPic").innerHTML = `<span class="rcp-pic-empty">${ic("image")}</span>`; b.hidden = true; },
   "rcpt-left": b => leftItem(b.dataset.id),
   "link-pick": b => pickLink(b.dataset.k, b.dataset.id),
@@ -2353,6 +2355,19 @@ function recipeDaySheet(r) {
     </form>`;
 }
 let rcpImage = null; // { blob, url } ή "remove"
+const ingRow = x => `<li><input class="field" name="ing" value="${esc(x)}" maxlength="140" aria-label="Υλικό" spellcheck="${SPELL}">
+  <button type="button" class="icon-btn" data-act="ing-del" aria-label="Αφαίρεση">${ic("trash")}</button></li>`;
+// Νέο υλικό από το πεδίο (όπως η γρήγορη προσθήκη στη λίστα): μπαίνει στο τέλος, χωρίς διπλά
+function addIngredient() {
+  const inp = $("#ingNew"), v = (inp && inp.value || "").trim();
+  if (!v) return;
+  const list = $("#ingList");
+  const have = [...list.querySelectorAll('[name="ing"]')].find(x => norm(x.value) === norm(v));
+  if (have) { toast(`«${v}» υπάρχει ήδη`); have.focus(); return; }
+  list.insertAdjacentHTML("beforeend", ingRow(v));
+  inp.value = ""; hideSuggest(); inp.focus();
+  const c = $("#ingCount"); if (c) c.textContent = list.children.length;
+}
 function recipeFormHtml(r = {}) {
   rcpImage = null;
   const cat = r.cat || "";
@@ -2364,8 +2379,9 @@ function recipeFormHtml(r = {}) {
         <div class="rcp-pic" id="rcpPic">${r.img ? `<img src="${imgUrl(r)}" alt="">` : `<span class="rcp-pic-empty">${ic("image")}</span>`}</div>
         <div class="split-btns"><label class="btn ghost">${ic("camera")}Επιλογή<input type="file" accept="image/*" id="rcpFile" hidden></label>
           <button type="button" class="btn ghost" data-act="rcp-pic-del"${r.img ? "" : " hidden"}>${ic("trash")}Αφαίρεση</button></div></div>
-      <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Κατηγορία</legend>
-        <div class="radios">${RCATS.map(([id, name]) => `<label><input type="radio" name="cat" value="${id}"${id === cat ? " checked" : ""} required><span>${name}</span></label>`).join("")}</div></fieldset>
+      <label class="fld">Κατηγορία<select class="field" name="cat" required>
+        <option value=""${cat ? "" : " selected"} disabled>Διάλεξε κατηγορία</option>
+        ${RCATS.map(([id, name]) => `<option value="${id}"${id === cat ? " selected" : ""}>${name}</option>`).join("")}</select></label>
       <div class="rcp-nums">
         <label class="fld">Χρόνος (λεπτά)<input class="field num" name="time" inputmode="numeric" value="${r.time ?? ""}" placeholder="45"></label>
         <label class="fld">Θερμίδες/μερίδα<input class="field num" name="kcal" inputmode="numeric" value="${r.kcal ?? ""}" placeholder="450"></label>
@@ -2373,7 +2389,12 @@ function recipeFormHtml(r = {}) {
       </div>
       <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Δυσκολία</legend>
         <div class="radios">${[1, 2, 3].map(d => `<label><input type="radio" name="diff" value="${d}"${(r.diff || 1) === d ? " checked" : ""}><span>${DIFF[d]}</span></label>`).join("")}</div></fieldset>
-      <label class="fld">Υλικά <span class="muted">ένα σε κάθε γραμμή</span><textarea class="field" name="ingredients" rows="7" required spellcheck="${SPELL}" placeholder="500 γρ. φασόλια μέτρια&#10;2 καρότα&#10;1 κρεμμύδι&#10;1 φλιτζάνι ελαιόλαδο">${esc((r.ingredients || []).join("\n"))}</textarea></label>
+      <div class="fld"><span>Υλικά <span class="muted num" id="ingCount">${(r.ingredients || []).length || ""}</span></span>
+        <ul class="ing-list" id="ingList">${(r.ingredients || []).map(ingRow).join("")}</ul>
+        <div class="ing-add">
+          <input class="field" id="ingNew" placeholder="Πρόσθεσε υλικό, π.χ. 500 γρ. κιμάς" maxlength="140" autocomplete="off" aria-autocomplete="list" spellcheck="${SPELL}" enterkeyhint="done" aria-label="Νέο υλικό">
+          <button type="button" class="composer-btn" data-act="ing-add" aria-label="Προσθήκη υλικού">${ic("plus")}</button>
+        </div></div>
       <label class="fld">Εκτέλεση <span class="muted">ένα βήμα σε κάθε γραμμή</span><textarea class="field" name="steps" rows="7" spellcheck="${SPELL}" placeholder="Μουλιάζουμε τα φασόλια από το βράδυ.&#10;Τα βράζουμε 10 λεπτά και πετάμε το νερό.">${esc((r.steps || []).join("\n"))}</textarea></label>
       <div class="sheet-actions split"><button type="button" class="btn ghost" data-act="close-sheet">Άκυρο</button><button class="btn" type="submit">${r.id ? "Αποθήκευση" : "Δημοσίευση"}</button></div>
     </form></div>`;
@@ -2392,8 +2413,11 @@ async function saveRecipeForm(f, v) {
   const btn = f.querySelector('button[type="submit"]');
   btn.disabled = true; btn.textContent = "Αποθήκευση…";
   try {
+    const pending = ($("#ingNew") || {}).value || "";
+    const ingredients = [...f.querySelectorAll('[name="ing"]')].map(x => x.value.trim()).concat(pending.trim()).filter(Boolean);
+    if (!ingredients.length) { toast("Πρόσθεσε τουλάχιστον ένα υλικό"); $("#ingNew").focus(); btn.disabled = false; btn.textContent = f.dataset.id ? "Αποθήκευση" : "Δημοσίευση"; return; }
     const body = { id: f.dataset.id || undefined, title: v.title, cat: v.cat, time: v.time, kcal: v.kcal, servings: v.servings, diff: v.diff,
-      ingredients: v.ingredients, steps: v.steps, noImg: rcpImage === "remove" };
+      ingredients, steps: v.steps, noImg: rcpImage === "remove" };
     let res = await fetch("/api/recipes", { method: "POST", headers: { ...authH(), "content-type": "application/json" }, body: JSON.stringify(body) });
     let r = await res.json();
     if (!res.ok) throw new Error(r.error || "Δεν αποθηκεύτηκε");
@@ -2474,9 +2498,9 @@ function showRow(it) {
   row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
 }
 function suggestions(input) {
-  const q = norm(input.value);
+  const q = norm(input.id === "ingNew" ? parseIngredient(input.value).name : input.value);
   if (!q) return [];
-  const src = input.id === "qa" ? productSource() : dishSource();
+  const src = input.id === "qa" || input.id === "ingNew" ? productSource() : dishSource();
   const words = q.split(/\s+/).filter(Boolean);
   return src.map(e => {
     const t = norm(e.text);
@@ -2521,13 +2545,15 @@ function hideSuggest() {
 function pickSuggest(i) {
   const e = sug.items[i], input = sug.input;
   if (!e || !input) return;
-  input.value = e.text;
+  // στα υλικά κρατάμε την ποσότητα που γράφτηκε («500 γρ. κιμ» -> «500 γρ. Κιμάς μοσχαρίσιος»)
+  const qty = input.id === "ingNew" ? parseIngredient(input.value).qty : "";
+  input.value = qty ? `${qty} ${e.text.charAt(0).toLocaleLowerCase("el") + e.text.slice(1)}` : e.text;
   hideSuggest();
   input.dispatchEvent(new Event("input", { bubbles: true }));
   hideSuggest();
   input.focus();
 }
-const suggestTarget = el => el && (el.id === "qa" || el.dataset.meal !== undefined || el.dataset.std !== undefined);
+const suggestTarget = el => el && (el.id === "qa" || el.id === "ingNew" || el.dataset.meal !== undefined || el.dataset.std !== undefined);
 document.addEventListener("input", e => { if (suggestTarget(e.target)) showSuggest(e.target); });
 document.addEventListener("focusin", e => { if (suggestTarget(e.target)) { e.target.setAttribute("role", "combobox"); e.target.setAttribute("aria-controls", "suggest"); } });
 document.addEventListener("focusout", e => {
@@ -2548,6 +2574,9 @@ document.addEventListener("keydown", e => {
   else if (e.key === "Escape") { e.stopImmediatePropagation(); hideSuggest(); }
 }, true);
 window.addEventListener("scroll", placeSuggest, { passive: true });
+$("#sheetPanel").addEventListener("scroll", placeSuggest, { passive: true });
+// Enter στο νέο υλικό: προσθήκη (όχι υποβολή της φόρμας)
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ingNew") { e.preventDefault(); addIngredient(); } });
 if (window.visualViewport) window.visualViewport.addEventListener("resize", placeSuggest);
 
 /* ---------- σύρσιμο φαγητών ---------- */

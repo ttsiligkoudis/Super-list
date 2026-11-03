@@ -640,3 +640,10 @@ body.is-dragging .day input{pointer-events:none}
 .rcp-content{display:grid;gap:10px;padding:16px max(18px,env(safe-area-inset-right,0px)) 8px max(18px,env(safe-area-inset-left,0px))}
 .rcp-content .rcp-c{margin-bottom:-2px}
 .rcp-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.ing-list{list-style:none;margin:6px 0;padding:0;display:grid;gap:6px}
+.ing-list:empty{display:none}
+.ing-list li{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:6px;align-items:center}
+.ing-list .field{min-height:44px}
+.ing-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:4px}
+.ing-add .composer-btn{width:48px;height:48px}
+.ing-add .composer-btn .ic{width:22px;height:22px}
