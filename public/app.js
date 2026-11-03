@@ -1252,14 +1252,24 @@ function rcptTargets(date, total) {
 const GR2LAT = [["μπ", "b"], ["ντ", "d"], ["γκ", "g"], ["γγ", "g"], ["ου", "u"], ["αι", "e"], ["ει", "i"], ["οι", "i"], ["υι", "i"],
   ["α", "a"], ["β", "v"], ["γ", "g"], ["δ", "d"], ["ε", "e"], ["ζ", "z"], ["η", "i"], ["θ", "th"], ["ι", "i"], ["κ", "k"], ["λ", "l"], ["μ", "m"], ["ν", "n"],
   ["ξ", "x"], ["ο", "o"], ["π", "p"], ["ρ", "r"], ["σ", "s"], ["ς", "s"], ["τ", "t"], ["υ", "i"], ["φ", "f"], ["χ", "h"], ["ψ", "ps"], ["ω", "o"]];
+const PHON = new Map();
 function phon(w, stem = true) {
+  const key = (stem ? "1" : "0") + w;
+  let out = PHON.get(key);
+  if (out === undefined) { out = phonRaw(w, stem); PHON.set(key, out); }
+  return out;
+}
+function phonRaw(w, stem) {
   let x = norm(w);
   for (const [g, l] of GR2LAT) x = x.split(g).join(l);
   x = x.replace(/ph/g, "f").replace(/gh/g, "g").replace(/ch/g, "h").replace(/qu/g, "k").replace(/[cq]/g, "k").replace(/y/g, "i").replace(/w/g, "v")
     .replace(/tz|ts|zz/g, "z").replace(/(?<=[aeiou])h(?=[aeiou]|$)/g, "").replace(/(.)\1+/g, "$1");
   return stem ? x.replace(/(es|as|os|is|us|on|ia|ie|io|a|e|i|o|u|s)$/, "") || x : x;
 }
-const looseWords = t => String(t || "").split(/[^\p{L}]+/u).filter(w => w.length >= 3).map(w => phon(w)).filter(w => w.length >= 3);
+const LW = new Map();
+const looseWords = t => { t = String(t || ""); let v = LW.get(t);
+  if (!v) { v = t.split(/[^\p{L}]+/u).filter(w => w.length >= 3).map(w => phon(w)).filter(w => w.length >= 3); LW.set(t, v); }
+  return v; };
 // prefix: μόνο για το κείμενο της απόδειξης (συντομογραφίες «ΜΟΤΣΑΡ.»), όχι για ολόκληρα ονόματα (λεμόνια ≠ λεμονάδα)
 function looseScore(text, name, prefix = false) {
   const rw = looseWords(text), iw = looseWords(name);
@@ -1280,7 +1290,13 @@ const brandTok = w => norm(w).replace(/[^\p{L}\p{N}&]/gu, "");
 const PROD_WORDS = new Set(BUILTIN_PRODUCTS.flatMap(([n]) => norm(n).split(/[^\p{L}]+/u)).filter(w => w.length >= 3));
 const BRAND_IDX = PRODUCT_BRANDS.map(([v, cat, words]) => ({ name: v.split("|")[0], cat, words,
   vars: v.split("|").map(x => x.trim().split(/\s+/).map(brandTok).filter(Boolean)) }));
+const BRAND_CACHE = new Map();
 function detectBrand(raw) {
+  raw = String(raw || "");
+  if (!BRAND_CACHE.has(raw)) BRAND_CACHE.set(raw, detectBrandRaw(raw));
+  return BRAND_CACHE.get(raw);
+}
+function detectBrandRaw(raw) {
   const toks = String(raw || "").split(/[\s.,/()-]+/).map(brandTok).filter(Boolean);
   if (!toks.length) return null;
   const tp = toks.map(t => phon(t, false)); // χωρίς κόψιμο κατάληξης: «λακτε» (Farine Lactée) ≠ «λακτα»
@@ -1318,24 +1334,34 @@ const withBrand = raw => { const b = detectBrand(raw); return b ? `${raw} ${b.wo
 // Ζευγάρια γραμμή απόδειξης -> προϊόν της λίστας: όλα τα πιθανά ζευγάρια με βαθμό, και κρατιούνται τα καλύτερα
 function pairRcpt(rows, listItems) {
   const cand = [];
-  // βαθμός: το κείμενο της απόδειξης μετράει πρώτο (π.χ. «ΛΕΜΟΝΙΑ» και όχι «ΚΛΙΝ...ΛΕΜ» για τα Λεμόνια),
-  // μετά το όνομα. Αν ο χρήστης άλλαξε το όνομα, μετράει μόνο αυτό.
   for (const r of rows) for (const it of listItems) {
-    const c = [{ name: it.name, id: it.id }];
-    const exact = !!r.name && norm(it.name) === norm(r.name);
-    const raw = r.raw && !r.edited ? r.raw : "";
-    const ns = r.name ? matchProduct(r.name, c) : null, rs = raw ? matchProduct(raw, c) : null;
-    const ls = Math.max(looseScore(r.name, it.name), raw ? looseScore(raw, it.name, true) : 0);
-    // η μάρκα βοηθάει, αλλά λιγότερο από ό,τι γράφει η ίδια η απόδειξη («MELISSA ΚΡΙΘ.» = κριθαράκι, όχι μακαρόνια)
-    const br = raw ? (r.brand === undefined ? (r.brand = detectBrand(raw)) : r.brand) : null;
-    const bs = br ? looseScore(br.words.replace(/,/g, " "), it.name) : 0;
-    if (!exact && !ns && !rs && !ls && !bs) continue;
-    cand.push({ r, it, sc: (exact ? 30 : 0) + (rs ? rs.score : 0) + (ns ? ns.score * 0.5 : 0) + ls * 0.8 + bs * 0.5 + (bs && br.cat === catOf(it) ? 2 : 0) });
+    const sc = pairScore(r, it);
+    if (sc !== null) cand.push({ r, it, sc });
   }
   cand.sort((x, y) => y.sc - x.sc);
   const out = new Map(), used = new Set();
   for (const { r, it } of cand) if (!out.has(r.k) && !used.has(it.id)) { out.set(r.k, it); used.add(it.id); }
   return out;
+}
+// Ο βαθμός κάθε ζευγαριού κρατιέται, ώστε κάθε πάτημα να μην ξαναϋπολογίζει τα πάντα (αργό στο κινητό)
+const PAIR_CACHE = new Map();
+function pairScore(r, it) {
+  const raw = r.raw && !r.edited ? r.raw : "";
+  const key = `${r.name}\u0001${raw}\u0001${it.name}\u0001${catOf(it)}`;
+  if (PAIR_CACHE.has(key)) return PAIR_CACHE.get(key);
+  // βαθμός: το κείμενο της απόδειξης μετράει πρώτο (π.χ. «ΛΕΜΟΝΙΑ» και όχι «ΚΛΙΝ...ΛΕΜ» για τα Λεμόνια),
+  // μετά το όνομα. Αν ο χρήστης άλλαξε το όνομα, μετράει μόνο αυτό.
+  const c = [{ name: it.name, id: it.id }];
+  const exact = !!r.name && norm(it.name) === norm(r.name);
+  const ns = r.name ? matchProduct(r.name, c) : null, rs = raw ? matchProduct(raw, c) : null;
+  const ls = Math.max(looseScore(r.name, it.name), raw ? looseScore(raw, it.name, true) : 0);
+  // η μάρκα βοηθάει, αλλά λιγότερο από ό,τι γράφει η ίδια η απόδειξη («MELISSA ΚΡΙΘ.» = κριθαράκι, όχι μακαρόνια)
+  const br = raw ? detectBrand(raw) : null;
+  const bs = br ? looseScore(br.words.replace(/,/g, " "), it.name) : 0;
+  const sc = !exact && !ns && !rs && !ls && !bs ? null
+    : (exact ? 30 : 0) + (rs ? rs.score : 0) + (ns ? ns.score * 0.5 : 0) + ls * 0.8 + bs * 0.5 + (bs && br.cat === catOf(it) ? 2 : 0);
+  PAIR_CACHE.set(key, sc);
+  return sc;
 }
 // Κλειδί για να θυμάται τις συντομογραφίες: μόνο τα κομμάτια με γράμματα, χωρίς τόνους
 const aliasKey = raw => norm(String(raw || "").split(/[\s.]+/).filter(p => p && !/\d/.test(p) && /\p{L}{2}/u.test(p)).join(" "));
@@ -1436,8 +1462,7 @@ function linkRow(k) {
   const usedElsewhere = new Set([...pairs].filter(([kk]) => kk !== k).map(([, i]) => i.id));
   const free = items.filter(i => !usedElsewhere.has(i.id));
   // προτάσεις πρώτα: όσα μοιάζουν με τη γραμμή, μετά αλφαβητικά
-  const sc = new Map(free.map(i => { const c = [{ name: i.name, id: i.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c);
-    return [i.id, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, i.name), looseScore(withBrand(r.raw), i.name, true))]; }));
+  const sc = new Map(free.map(i => [i.id, Math.max(0, pairScore({ ...r, edited: false }, i) || 0)]));
   free.sort((a, b) => (b.id === (cur && cur.id)) - (a.id === (cur && cur.id)) || sc.get(b.id) - sc.get(a.id) || a.name.localeCompare(b.name, "el"));
   const opts = free.map(i => ({ act: "link-pick", k, id: i.id, label: i.name, icon: cur && cur.id === i.id ? "check" : "", cls: cur && cur.id === i.id ? "cur" : sc.get(i.id) > 0 ? "sugg" : "", note: cur && cur.id === i.id ? "τώρα" : sc.get(i.id) > 0 ? "μοιάζει" : "" }));
   opts.push({ act: "link-pick", k, id: "new", label: "Νέο προϊόν, δεν ήταν στη λίστα", icon: "plus", cls: "new" });
@@ -1450,8 +1475,7 @@ function leftItem(id) {
   const free = rows.filter(r => !pairs.has(r.k));
   const box = $(".rcpt-left");
   document.querySelectorAll(".link-panel").forEach(x => x.remove());
-  const sc = new Map(free.map(r => { const c = [{ name: it.name, id: it.id }]; const a = matchProduct(r.raw || "", c), b = matchProduct(r.name, c);
-    return [r.k, Math.max(a ? a.score : 0, b ? b.score : 0, looseScore(r.name, it.name), looseScore(withBrand(r.raw), it.name, true))]; }));
+  const sc = new Map(free.map(r => [r.k, Math.max(0, pairScore({ ...r, edited: false }, it) || 0)]));
   free.sort((a, b) => sc.get(b.k) - sc.get(a.k));
   const price = k => { const f = document.querySelector(`[name="p${k}"]`); return f ? f.value + " €" : ""; };
   const opts = free.map(r => ({ act: "link-pick", k: r.k, id, label: r.name, note: price(r.k), cls: sc.get(r.k) > 0 ? "sugg" : "" }));

@@ -288,13 +288,15 @@ const plain = s => String(s).toLocaleLowerCase("el").normalize("NFD").replace(/[
 const STOP = new Set(["ολες", "ολα", "ολους", "χωρις", "χρησεις", "για", "τις", "των", "του", "της", "και", "απο", "μικρα", "μεγαλα", "μεγαλο", "μικρο", "συσκευασια", "σκονη", "φετες", "κομματια",
   "ελαφρυ", "ελαφρια", "ελαφρα", "φρεσκο", "φρεσκα", "πληρες", "λευκο", "λευκα", "κοκκινο", "κοκκινα", "μαυρο", "πρασινο",
   "τριμμενο", "τριμμενη", "ψιλοκομμενο", "κατεψυγμενο", "κατεψυγμενα", "ψητο", "βραστο"]);
+const WORDS = new Map(); // λέξεις κάθε ονόματος, μία φορά (η αντιστοίχιση καλείται χιλιάδες φορές)
+const wordsOf = name => { let w = WORDS.get(name); if (!w) { w = plain(name).split(/[^a-zα-ω0-9]+/).filter(Boolean); WORDS.set(name, w); } return w; };
 export function matchProduct(rawName, candidates) {
   const toks = plain(rawName).split(/[^a-zα-ω]+/).filter(t => t.length >= 2 && !/^(gr?|kg|ml|cl|lt|tem|τεμ|g)$/.test(t));
   const strong = toks.filter(t => t.length >= 3), short = toks.filter(t => t.length < 3);
   if (!strong.length) return null;
   let best = null;
   for (const c of candidates) {
-    const words = plain(c.name).split(/[^a-zα-ω0-9]+/).filter(Boolean);
+    const words = wordsOf(c.name);
     if (!words.length) continue;
     const head = words[0];
     const headTok = strong.find(t => near(head, t) || (t.length >= 5 && t.startsWith(head) && head.length >= 4));
