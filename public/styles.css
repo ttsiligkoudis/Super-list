@@ -649,3 +649,4 @@ body.is-dragging .day input{pointer-events:none}
 .ing-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:4px}
 .ing-add .composer-btn{width:48px;height:48px}
 .ing-add .composer-btn .ic{width:22px;height:22px}
+.rcpt-steps{margin:6px 0 10px;padding-left:20px;display:grid;gap:4px}

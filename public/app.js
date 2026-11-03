@@ -1100,6 +1100,11 @@ function pastSheet() {
 }
 /* ----- εισαγωγή απόδειξης ----- */
 
+// Σελιδοδείκτης: παίρνει το κείμενο της σελίδας που βλέπεις (αφού φορτώσει) και το ανοίγει στην εφαρμογή
+function bookmarklet() {
+  const js = `(()=>{const t=document.body.innerText||"";if(!/Περιγραφ/.test(t)){alert("Δεν βρέθηκαν ακόμα τα προϊόντα. Περίμενε να φορτώσει η απόδειξη και ξαναπάτα.");return}location.href=${JSON.stringify(location.origin + "/#rcpt=")}+encodeURIComponent(t.slice(0,30000))})()`;
+  return "javascript:" + js;
+}
 function rcptSheet(msg = "") {
   return `<h2 class="sheet-title">Εισαγωγή απόδειξης</h2>
     <p class="sheet-text small">Φωτογράφισε την απόδειξη ίσια και με καλό φως. Η ανάγνωση γίνεται στη συσκευή σου και η φωτογραφία δεν ανεβαίνει πουθενά.</p>
@@ -1109,6 +1114,16 @@ function rcptSheet(msg = "") {
         <label class="btn wide">${ic("camera")}Φωτογραφίες ή αρχεία<input type="file" accept="image/*" id="rcptFile" multiple hidden></label>
       </div>
       <p class="small muted">Καλύτερα να φαίνεται και το QR στο κάτω μέρος: από εκεί έρχονται όλα τα προϊόντα με ακριβή ποσά. Μεγάλη απόδειξη χωρίς QR; Βγάλε όσες φωτογραφίες χρειάζεται, από πάνω προς τα κάτω, και διάλεξέ τις όλες μαζί. Ό,τι φαίνεται σε δύο φωτογραφίες μετράει μία φορά.</p>
+      <details class="rcpt-paste"><summary>Αυτόματα από τη σελίδα του QR (σελιδοδείκτης)</summary>
+        <p class="small muted">Οι ψηφιακές αποδείξεις (π.χ. Σκλαβενίτης / Epsilon Net) ανοίγουν μόνο σε browser. Με αυτόν τον σελιδοδείκτη, όταν ανοίξει η σελίδα της απόδειξης, ένα πάτημα φέρνει όλα τα προϊόντα εδώ.</p>
+        <ol class="small muted rcpt-steps">
+          <li>Αντίγραψε τον κώδικα και πρόσθεσε έναν σελιδοδείκτη σε οποιαδήποτε σελίδα στον Chrome (☆).</li>
+          <li>Επεξεργάσου τον: όνομα <b>Ψώνια</b>, και στη διεύθυνση επικόλλησε τον κώδικα.</li>
+          <li>Όταν ανοίξει η απόδειξη, γράψε «Ψώνια» στη γραμμή διευθύνσεων και πάτα τον σελιδοδείκτη (όχι την αναζήτηση).</li>
+        </ol>
+        <textarea class="field" id="rcptBm" rows="3" readonly spellcheck="false">${esc(bookmarklet())}</textarea>
+        <div class="sheet-actions"><button class="btn ghost" type="button" data-act="rcpt-bm-copy">${ic("copy")}Αντιγραφή κώδικα</button></div>
+      </details>
       <details class="rcpt-paste"><summary>Ή επικόλλησε το κείμενο της απόδειξης</summary>
         <form data-form="rcpt-text" autocomplete="off">
           <textarea class="field" name="text" rows="6" spellcheck="false" placeholder="Το κείμενο ή τον σύνδεσμο της ψηφιακής απόδειξης (από το QR)"></textarea>
@@ -1739,7 +1754,7 @@ function rcptReview() {
         <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
       ${rcptShots.length ? `<label class="btn ghost wide rcpt-more">${ic("camera")}Πρόσθεσε κι άλλη φωτογραφία${rcptShots.length > 1 ? ` <span class="muted">· ${rcptShots.length}</span>` : ""}<input type="file" accept="image/*" id="rcptMore" multiple hidden></label>` : ""}
-      ${rcptExact ? `<p class="rcpt-note"><span class="rcpt-ok">${ic("check")}Από την ψηφιακή απόδειξη (QR): ακριβή προϊόντα και ποσά</span></p>` : rcptQrUrl ? `<p class="small muted">${rcptQrHuman ? "Βρήκα το QR. Η σελίδα του παρόχου δείχνει τα προϊόντα μόνο σε άνθρωπο (έλεγχος ασφαλείας), οπότε τα παρακάτω είναι από την ανάγνωση της φωτογραφίας. Για ακριβή ποσά:" : "Βρήκα το QR αλλά η σελίδα του δεν έδωσε τα προϊόντα. Για ακριβή ποσά:"} <a href="${esc(rcptQrUrl)}" target="_blank" rel="noopener">άνοιξέ την</a>, πάτα «Επιλογή όλων» και «Αντιγραφή», γύρνα εδώ και επικόλλησέ τη στο «Το κείμενο που διαβάστηκε» → «Ανάγνωση ξανά».</p>
+      ${rcptExact ? `<p class="rcpt-note"><span class="rcpt-ok">${ic("check")}Από την ψηφιακή απόδειξη (QR): ακριβή προϊόντα και ποσά</span></p>` : rcptQrUrl ? `<p class="small muted">${rcptQrHuman ? "Βρήκα το QR. Η σελίδα του παρόχου δείχνει τα προϊόντα μόνο σε άνθρωπο (έλεγχος ασφαλείας), οπότε τα παρακάτω είναι από την ανάγνωση της φωτογραφίας. Για ακριβή ποσά:" : "Βρήκα το QR αλλά η σελίδα του δεν έδωσε τα προϊόντα. Για ακριβή ποσά:"} <a href="${esc(rcptQrUrl)}" target="_blank" rel="noopener">άνοιξέ την</a> και πάτα τον σελιδοδείκτη «Ψώνια» (δες «Αυτόματα από τη σελίδα του QR» στην εισαγωγή απόδειξης), ή πάτα «Επιλογή όλων» και «Αντιγραφή», γύρνα εδώ και επικόλλησέ τη στο «Το κείμενο που διαβάστηκε» → «Ανάγνωση ξανά».</p>
         ${rcptQrWhy ? `<details class="rcpt-paste"><summary>Τι απάντησε η σελίδα</summary><pre class="small muted" style="white-space:pre-wrap;word-break:break-all">${esc(rcptQrWhy)}</pre></details>` : ""}` : ""}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
@@ -2060,6 +2075,7 @@ const actions = {
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
   "rcpt-sheet": () => { loadShared(); openSheet(rcptSheet()); },
+  "rcpt-bm-copy": async () => { const t = $("#rcptBm"); if (!t) return; try { await navigator.clipboard.writeText(t.value); } catch { t.select(); document.execCommand("copy"); } toast("Ο κώδικας αντιγράφηκε"); },
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-link": b => linkRow(b.dataset.k),
   "recipe-open": b => openRecipe(b.dataset.id),
@@ -2864,6 +2880,20 @@ view.addEventListener("pointercancel", () => endDrag(false));
 $("#qa").setAttribute("spellcheck", SPELL);
 render();
 sync();
+// Μεταφορά από τη σελίδα της ψηφιακής απόδειξης με τον σελιδοδείκτη «Ψώνια»: #rcpt=<κείμενο σελίδας>
+function receiptFromHash() {
+  const m = location.hash.match(/^#rcpt=([\s\S]*)$/);
+  if (!m) return;
+  let t = "";
+  try { t = decodeURIComponent(m[1]); } catch { t = ""; }
+  history.replaceState(null, "", location.pathname + location.search);
+  if (!t.trim()) return;
+  ui.tab = "history"; saveUi(); render();
+  loadShared(); openSheet(rcptSheet()); rcptShots = []; rcptQrUrl = "";
+  showReceipt(t);
+}
+receiptFromHash();
+window.addEventListener("hashchange", receiptFromHash);
 setInterval(() => { if (document.visibilityState === "visible") sync(); }, 20000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
 window.addEventListener("online", () => sync());
