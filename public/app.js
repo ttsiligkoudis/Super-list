@@ -1265,6 +1265,7 @@ function looseScore(text, name, prefix = false) {
 // Μάρκες: «FAIRY MAX» -> καθαριστικά, «απορρυπαντικό πιάτων». Κάθε λέξη της μάρκας πρέπει να βρεθεί στη γραμμή
 // (ίδια, ίδια στη «φωνητική» γραφή, ή συντομογραφία της). Κερδίζει η μάρκα με τα περισσότερα γράμματα.
 const brandTok = w => norm(w).replace(/[^\p{L}\p{N}&]/gu, "");
+const PROD_WORDS = new Set(BUILTIN_PRODUCTS.flatMap(([n]) => norm(n).split(/[^\p{L}]+/u)).filter(w => w.length >= 3));
 const BRAND_IDX = PRODUCT_BRANDS.map(([v, cat, words]) => ({ name: v.split("|")[0], cat, words,
   vars: v.split("|").map(x => x.trim().split(/\s+/).map(brandTok).filter(Boolean)) }));
 function detectBrand(raw) {
@@ -1275,6 +1276,7 @@ function detectBrand(raw) {
   const fit = (b, i, multi) => { const t = toks[i];
     if (t === b || (b.length > 3 && phon(b, false) === tp[i])) return b.length + 2;
     if (b.length <= 3 || t.length < (multi ? 2 : 4)) return 0;
+    if (!multi && PROD_WORDS.has(t)) return 0; // ολόκληρη λέξη προϊόντος («ΜΕΛΙ») δεν είναι συντομογραφία μάρκας («Μέλισσα»)
     if (b.startsWith(t)) return t.length;
     return t.startsWith(b) && t.length - b.length <= 3 ? b.length : 0; };
   let best = null;
