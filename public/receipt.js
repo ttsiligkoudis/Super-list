@@ -89,7 +89,7 @@ const DISCOUNT = /^(εκπτωση|ἐκπτωση|εκπτ|ekπ|ekt|discount|π
 const QTY_LINE = new RegExp(`^(\\d+(?:[.,]\\d+)?)\\s*(kg|κιλ[αό]?|κ\\S{0,2}|τεμ|x|χ)\\s*(?:[xχ]{1,2})?\\s*(${MONEY})`, "i");
 
 // Γραμμή για έλεγχο λέξεων-κλειδιών: λατινικά που μοιάζουν με ελληνικά γίνονται ελληνικά, πεζά, χωρίς τόνους
-const keyOf = l => [...l].map(c => HOMO[c] || c).join("").toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ς/g, "σ");
+const keyOf = l => [...l].map(c => HOMO[c] || c).join("").replace(/(?<=[Α-Ω])0|0(?=[Α-Ω])/g, "Ο").toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ς/g, "σ");
 
 // Γραμμή προϊόντος: «ΟΝΟΜΑ τιμή [ΦΠΑ]». Από δεξιά παίρνει τα «αριθμητικά» κομμάτια:
 // αν είναι δύο, το τελευταίο είναι το ΦΠΑ (π.χ. «13.00%», που το OCR μπορεί να δει σαν «153.002») και η τιμή το προηγούμενο.
@@ -97,10 +97,11 @@ const MONEY_TOK = /^-?[\dΊΙIlOΟ]{1,4}[.,]\d{2,3}[%\d]?$/;
 function itemLine(l) {
   const toks = l.split(" ");
   const nums = [];
+  let junk = 0;
   while (toks.length > 1) {
     const t = toks[toks.length - 1].replace(/^[^\d\-ΊΙΟO]{1,2}(?=\d)/, "");
     if (MONEY_TOK.test(t) || /^\d{1,2}[.,]?\d{0,2}%$/.test(t)) { nums.unshift(t); toks.pop(); }
-    else if (/^[A-EΑ-Ε*%]$/.test(t) && !nums.length) toks.pop();
+    else if ((/^[A-EΑ-Ε*%]$/.test(t) || /^[^A-Za-zΑ-Ωα-ω]{1,2}$/.test(t)) && junk++ < 2) toks.pop();
     else break;
     if (nums.length === 3) break;
   }
@@ -115,7 +116,7 @@ function itemLine(l) {
 
 export function parseReceipt(text, opts = {}) {
   const raw = String(text || "").replace(/\r/g, "");
-  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
+  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
   const low = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   // κατάστημα
@@ -188,7 +189,7 @@ export function parseReceipt(text, opts = {}) {
       prev.qty = unit ? `${q[1].replace(".", ",")}${unit}` : `×${q[1]}`;
       continue;
     }
-    if (SKIP.test(n)) continue;
+    if (SKIP.test(n) || SKIP.test(keyOf(l))) continue;
     const m = itemLine(l);
     if (!m) continue;
     const price = m.price;
@@ -200,7 +201,13 @@ export function parseReceipt(text, opts = {}) {
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
   const sum = items.reduce((a, i) => a + i.price, 0);
-  if (sum > 0 && totalCands.length) {
+  // το ίδιο ποσό σε πολλές γραμμές (ΣΥΝΟΛΟ, ΚΑΡΤΑ, ΠΟΣΟ/AMOUNT, πίνακας ΦΠΑ) είναι σχεδόν σίγουρα το σωστό
+  const freq = {};
+  totalCands.forEach(n => { const k = n.toFixed(2); freq[k] = (freq[k] || 0) + 1; });
+  const agreed = Object.entries(freq).filter(([, c]) => c >= 2).map(([k]) => +k)
+    .sort((a, b) => freq[b.toFixed(2)] - freq[a.toFixed(2)] || b - a)[0];
+  if (agreed && (!sum || agreed >= sum * 0.7)) total = agreed;
+  else if (sum > 0 && totalCands.length) {
     const far = t => t == null || Math.abs(t - sum) > Math.max(1, sum * 0.1);
     if (far(total)) {
       const best = totalCands.reduce((a, b) => Math.abs(b - sum) < Math.abs(a - sum) ? b : a);

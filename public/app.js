@@ -1189,7 +1189,8 @@ function rcptReview() {
       <details class="rcpt-paste"><summary>Το κείμενο που διαβάστηκε</summary>
         <p class="small muted">Αν κάτι βγήκε λάθος, διόρθωσέ το εδώ και πάτα «Ανάγνωση ξανά».</p>
         <textarea class="field" id="rcptRaw" rows="8" spellcheck="false">${esc(rcpt.text)}</textarea>
-        <button class="btn ghost" type="button" data-act="rcpt-reparse">Ανάγνωση ξανά</button>
+        <div class="sheet-actions split"><button class="btn ghost" type="button" data-act="rcpt-copy">${ic("copy")}Αντιγραφή</button>
+        <button class="btn ghost" type="button" data-act="rcpt-reparse">Ανάγνωση ξανά</button></div>
       </details>
       <div class="sheet-actions split">
         <button class="btn ghost" type="button" data-act="rcpt-sheet">Άλλη φωτογραφία</button>
@@ -1444,6 +1445,7 @@ const actions = {
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
   "rcpt-sheet": () => openSheet(rcptSheet()),
+  "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-reparse": () => { const t = $("#rcptRaw"); if (t && t.value.trim()) showReceipt(t.value); },
   "rcpt-del": b => { b.closest("li").remove(); rcptSumUpdate(); },
   "hist-view": b => { ui.histView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
