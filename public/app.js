@@ -2,7 +2,7 @@ import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
 import { BUILTIN_PRODUCTS } from "./products.js";
-import { parseReceipt, matchProduct, niceName } from "./receipt.js";
+import { parseReceipt, matchProduct, niceName, mergeLatin } from "./receipt.js";
 
 /* ---------- constants ---------- */
 
@@ -1103,7 +1103,7 @@ function rcptSheet(msg = "") {
     </div>`;
 }
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
-let ocrWorker = null, ocrProgress = null;
+let ocrWorker = null, ocrLatin = null, ocrProgress = null;
 async function ocrWorkerReady() {
   if (!window.Tesseract) await loadScript("/ocr/tesseract.min.js");
   const base = location.origin + "/ocr";
@@ -1112,6 +1112,32 @@ async function ocrWorkerReady() {
     logger: m => ocrProgress && ocrProgress(m)
   }).catch(e => { ocrWorker = null; throw e; });
   return ocrWorker;
+}
+function ocrLatinReady() {
+  const base = location.origin + "/ocr";
+  if (!ocrLatin) ocrLatin = window.Tesseract.createWorker("eng", 1, {
+    workerPath: base + "/worker.min.js", corePath: base, langPath: base, gzip: true,
+    logger: m => ocrProgress && ocrProgress(m)
+  }).catch(e => { ocrLatin = null; throw e; });
+  return ocrLatin;
+}
+// Ξαναδιαβάζει με αγγλικά μόνο τις γραμμές των προϊόντων, για τα ονόματα με λατινικά
+async function latinNames(img, data, r, say) {
+  if (!r.items.length) return;
+  let e;
+  try { e = await ocrLatinReady(); } catch { return; }
+  let k = 0;
+  for (const it of r.items) {
+    say("Διαβάζω τα ονόματα των προϊόντων…", 0.85 + 0.15 * (k++ / r.items.length));
+    const L = data.lines[it.line];
+    if (!L || !L.words || !L.words.length) continue;
+    const b = L.bbox;
+    try {
+      const { data: d } = await e.recognize(img, { rectangle: { left: b.x0, top: Math.max(0, b.y0 - 3), width: b.x1 - b.x0, height: b.y1 - b.y0 + 6 } });
+      const m = mergeLatin(L.words, d.words || []);
+      if (m && /[A-Za-zΑ-Ωα-ω]{2}/.test(m)) it.raw = m;
+    } catch {}
+  }
 }
 // Γκρι και σε μέγεθος που διαβάζει καλά το OCR (οι μικρές φωτογραφίες μεγαλώνουν, οι τεράστιες μικραίνουν)
 async function prepImage(file) {
@@ -1132,15 +1158,20 @@ async function readReceiptFile(file) {
   if (!box) return;
   const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
   say("Ετοιμάζω την ανάγνωση…", 0.02);
+  let latin = false;
   ocrProgress = m => {
-    if (m.status === "recognizing text") say("Διαβάζω την απόδειξη…", 0.3 + m.progress * 0.7);
-    else if (/load|initializ/.test(m.status)) say("Κατεβαίνει η αναγνώριση κειμένου (μόνο την πρώτη φορά)…", Math.min(0.3, 0.05 + (m.progress || 0) * 0.25));
+    if (m.status === "recognizing text" && !latin) say("Διαβάζω την απόδειξη…", 0.3 + m.progress * 0.55);
+    else if (/load|initializ/.test(m.status) && !latin) say("Κατεβαίνει η αναγνώριση κειμένου (μόνο την πρώτη φορά)…", Math.min(0.3, 0.05 + (m.progress || 0) * 0.25));
   };
   try {
     const [w, img] = await Promise.all([ocrWorkerReady(), prepImage(file)]);
     const { data } = await w.recognize(img);
+    // το κείμενο φτιάχνεται από τις γραμμές, ώστε κάθε προϊόν να ξέρει τη θέση του στη φωτογραφία
+    const text = (data.lines || []).map(l => l.text.replace(/\n+$/, "")).join("\n") || data.text;
+    const r = parseReceipt(text);
+    if (data.lines && data.lines.length) { latin = true; await latinNames(img, data, r, say); }
     ocrProgress = null;
-    showReceipt(data.text);
+    showReceipt(text, r);
   } catch (err) {
     ocrProgress = null;
     console.error(err);
@@ -1148,8 +1179,8 @@ async function readReceiptFile(file) {
   }
 }
 let rcpt = null;
-function showReceipt(text) {
-  const r = parseReceipt(text);
+function showReceipt(text, parsed) {
+  const r = parsed || parseReceipt(text);
   if (!r.items.length && r.total == null) { openSheet(rcptSheet("Δεν βρήκα προϊόντα ή σύνολο. Δοκίμασε πιο καθαρή φωτογραφία, χωρίς σκιές.")); return; }
   const known = knownProducts();
   const cands = [...BPROD.values()].map(p => ({ name: p.name, cat: p.c }))

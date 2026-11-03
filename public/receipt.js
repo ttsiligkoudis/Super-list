@@ -17,7 +17,7 @@ const HOMO = { A: "Α", B: "Β", E: "Ε", Z: "Ζ", H: "Η", I: "Ι", K: "Κ", M:
 const GREEK = /[Ͱ-Ͽἀ-῿]/;
 
 // Κάθε κομμάτι ανάμεσα σε κενά και τελείες ελέγχεται χωριστά
-const fixWord = w => w.split(/(\.)/).map(p => fixSpelling(fixUnit(fixPart(p)))).join("");
+export const fixWord = w => w.split(/(\.)/).map(p => fixSpelling(fixUnit(fixPart(p)))).join("");
 // «3706», «30046», «1804» στο τέλος ονόματος: το OCR διάβασε το G (γραμμάρια) σαν 6, 4 ή α
 const fixUnit = w => w.replace(/^(\d{0,2}[ΧX]?\d{1,3}[05])(?:46|06|0α|6|4|α)$/, "$1G").replace(/(\d)[ΊΙ](?=\d)|(^|[ΧX])[ΊΙ](?=\d)/g, (m, d, x) => (d ?? x) + "1");
 
@@ -102,7 +102,7 @@ function itemLine(l) {
   const nums = [];
   let junk = 0;
   while (toks.length > 1) {
-    const t = toks[toks.length - 1].replace(/^[^\d\-ΊΙΟO]{1,2}(?=\d)/, "");
+    const t = toks[toks.length - 1].replace(/^[^\d\-ΊΙΟO]{1,2}(?=\d)/, "").replace(/(\d)[^\d%]{1,2}$/, "$1");
     if (MONEY_TOK.test(t) || /^\d{1,2}[.,]?\d{0,2}%$/.test(t)) { nums.unshift(t); toks.pop(); }
     else if ((/^[A-EΑ-Ε*%]$/.test(t) || /^[^A-Za-zΑ-Ωα-ω]{1,2}$/.test(t)) && junk++ < 2) toks.pop();
     else break;
@@ -122,7 +122,9 @@ function itemLine(l) {
 
 export function parseReceipt(text, opts = {}) {
   const raw = String(text || "").replace(/\r/g, "");
-  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
+  // srcIdx: σε ποια γραμμή του αρχικού κειμένου αντιστοιχεί κάθε γραμμή (για ξαναδιάβασμα των ονομάτων)
+  const srcIdx = [];
+  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter((l, i) => l && srcIdx.push(i));
   const low = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   // κατάστημα
@@ -177,6 +179,7 @@ export function parseReceipt(text, opts = {}) {
   // προϊόντα: «ΟΝΟΜΑ ποσό [ΦΠΑ%]» μέχρι το σύνολο
   const items = [];
   for (let li = 0; li < lines.length; li++) {
+    const src = srcIdx[li];
     let l = lines[li].replace(/[.,;:'’]+(?=\s|$)/g, m => /\d$/.test(m) ? m : "");
     // το OCR χώρισε το όνομα από την τιμή σε δύο γραμμές
     const nx = lines[li + 1];
@@ -204,7 +207,7 @@ export function parseReceipt(text, opts = {}) {
     if (price == null || price <= 0 || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     if (m.alts) m.alts.cur = price;
-    items.push({ raw: name, price, qty: "", alts: m.alts });
+    items.push({ raw: name, price, qty: "", alts: m.alts, line: src });
   }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
@@ -260,7 +263,9 @@ function near(w, t) {
 const plain = s => String(s).toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 // Ταίριασμα με κάθε λέξη της απόδειξης: «ΝΟΥ.ΣΑΜ.ΓΑΛ.ΠΛΗ» -> «Γάλα φρέσκο πλήρες», «CO.ΜΟΥΣΤ.CL» -> «Μουστάρδα».
 // Η πρώτη λέξη του προϊόντος (το «τι είναι») πρέπει να ταιριάζει σε κάποιο κομμάτι 3+ γραμμάτων.
-const STOP = new Set(["ολες", "ολα", "ολους", "χωρις", "χρησεις", "για", "τις", "των", "του", "της", "και", "απο", "μικρα", "μεγαλα", "μεγαλο", "μικρο", "συσκευασια", "σκονη", "φετες", "κομματια"]);
+const STOP = new Set(["ολες", "ολα", "ολους", "χωρις", "χρησεις", "για", "τις", "των", "του", "της", "και", "απο", "μικρα", "μεγαλα", "μεγαλο", "μικρο", "συσκευασια", "σκονη", "φετες", "κομματια",
+  "ελαφρυ", "ελαφρια", "ελαφρα", "φρεσκο", "φρεσκα", "πληρες", "λευκο", "λευκα", "κοκκινο", "κοκκινα", "μαυρο", "πρασινο",
+  "τριμμενο", "τριμμενη", "ψιλοκομμενο", "κατεψυγμενο", "κατεψυγμενα", "ψητο", "βραστο"]);
 export function matchProduct(rawName, candidates) {
   const toks = plain(rawName).split(/[^a-zα-ω]+/).filter(t => t.length >= 2 && !/^(gr?|kg|ml|cl|lt|tem|τεμ|g)$/.test(t));
   const strong = toks.filter(t => t.length >= 3), short = toks.filter(t => t.length < 3);
@@ -296,4 +301,34 @@ export function niceName(raw) {
   const s = raw.replace(/\.+/g, ".").replace(/\.(?=\S)/g, ". ").replace(/\s+/g, " ").trim();
   const lower = s.toLocaleLowerCase("el").replace(/(\d)\s*(g|gr|kg|ml|l|cl)\b/gi, (m, d, u) => d + u.toUpperCase());
   return lower.charAt(0).toLocaleUpperCase("el") + lower.slice(1).replace(/σ(?=\s|$|\.)/g, "ς");
+}
+
+// Τα ονόματα με λατινικά (WETTEX, CIF, VIAKAL) διαβάζονται λάθος με τα ελληνικά. Για κάθε λέξη του ονόματος
+// συγκρίνει την ελληνική ανάγνωση με την αγγλική της ίδιας περιοχής και κρατά την αγγλική μόνο όταν
+// έχει γράμματα που δεν υπάρχουν στα ελληνικά (C, D, G, L, S, V, W...) και είναι πιο σίγουρη.
+// gWords/eWords: [{ text, confidence, bbox: { x0, x1 } }]
+const LATIN_ONLY = /[CDGJLRSUVW]/;
+export function mergeLatin(gWords, eWords) {
+  const nameWords = [...gWords];
+  // οι αριθμοί στο τέλος (τιμή, ΦΠΑ) δεν ανήκουν στο όνομα
+  while (nameWords.length > 1 && !/[A-Za-zΑ-Ωα-ω]{2}/.test(nameWords[nameWords.length - 1].text)) nameWords.pop();
+  const overlap = (a, b) => Math.max(0, Math.min(a.bbox.x1, b.bbox.x1) - Math.max(a.bbox.x0, b.bbox.x0)) / Math.max(1, Math.min(a.bbox.x1 - a.bbox.x0, b.bbox.x1 - b.bbox.x0));
+  const out = [];
+  let prevLatin = false;
+  for (const g of nameWords) {
+    const es = eWords.filter(e => overlap(g, e) > 0.5 && /[A-Za-z]/.test(e.text));
+    // μόνο τα γράμματα πριν τους αριθμούς μετράνε («ZOM.K.120G»: το G είναι γραμμάρια)
+    const good = e => LATIN_ONLY.test(e.text.replace(/\d.*$/, "")) && e.confidence >= 50 && e.confidence > g.confidence;
+    const short = e => prevLatin && !/[a-z]/.test(e.text) && e.text.replace(/[^A-Z]/g, "").length <= 3 && e.confidence >= g.confidence - 10;
+    if (es.length && es.some(good) && es.every(e => good(e) || short(e) || !/[A-Za-z]{2}/.test(e.text))) {
+      out.push(es.map(e => e.text).join(" "));
+      prevLatin = true;
+    } else if (es.length === 1 && short(es[0])) {
+      out.push(es[0].text);
+    } else {
+      out.push(g.text.split(" ").map(fixWord).join(" "));
+      prevLatin = false;
+    }
+  }
+  return out.join(" ").replace(/\s*\.\s*/g, ".").trim();
 }
