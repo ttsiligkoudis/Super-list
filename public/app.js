@@ -2112,6 +2112,22 @@ document.addEventListener("submit", e => {
     const sm = storeMap();
     const order = Math.max(0, ...itemsOf(ui.listId).map(i => i.order || 0)) + 1;
     const bp = BPROD.get(norm(p.name));
+    // υπάρχει ήδη στη λίστα: δεν μπαίνει δεύτερη φορά, το μήνυμα αφορά την εγγραφή που υπάρχει
+    const finalName = known ? known.name : bp ? bp.name : cap(p.name);
+    const dup = itemsOf(ui.listId).find(i => norm(i.name) === norm(finalName) || norm(i.name) === norm(p.name));
+    if (dup) {
+      const snap = snapshot("items", [dup]);
+      const wasDone = dup.done, qtyChanged = p.qty && p.qty !== dup.qty;
+      if (wasDone) dup.done = false;
+      if (qtyChanged) dup.qty = p.qty;
+      if (wasDone || qtyChanged) { touch(dup); changed(); }
+      $("#qa").value = ""; hideSuggest(); $("#qa").focus();
+      const where = `στο «${CAT[catOf(dup)].name}»`;
+      const msg = wasDone ? `«${dup.name}» ήταν στο καλάθι, ξαναμπήκε στη λίστα${qtyChanged ? ` (${p.qty})` : ""}`
+        : qtyChanged ? `«${dup.name}» υπάρχει ήδη, άλλαξε η ποσότητα σε ${p.qty}` : `«${dup.name}» υπάρχει ήδη ${where}${dup.qty ? ` (${dup.qty})` : ""}`;
+      toast(msg, wasDone || qtyChanged ? { label: "Αναίρεση", run: () => { restore(snap); changed(); } } : { label: "Εμφάνιση", run: () => showRow(dup) });
+      return;
+    }
     const item = touch({ id: uid(), listId: ui.listId, name: known ? known.name : bp ? bp.name : cap(p.name), qty: p.qty,
       cat: known && CAT[known.cat] ? known.cat : bp ? bp.c : guessCat(p.name),
       store: sm[ui.filter] ? ui.filter : (known && sm[known.store] ? known.store : ""),
@@ -2167,6 +2183,16 @@ function productSource() {
   for (const [k, b] of BPROD) if (!m.has(k)) m.set(k, { text: b.name, n: 0 });
   return [...m.values()];
 }
+// Ανοίγει τον διάδρομο, πάει στη γραμμή και την αναβοσβήνει
+function showRow(it) {
+  if (ui.filter !== "all" && ui.filter !== it.store) ui.filter = "all";
+  ui.collapsed = { ...(ui.collapsed || {}), [catOf(it)]: false };
+  saveUi(); render();
+  const row = document.querySelector(`[data-row="${it.id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
+}
 function suggestions(input) {
   const q = norm(input.value);
   if (!q) return [];
@@ -2174,8 +2200,9 @@ function suggestions(input) {
   const words = q.split(/\s+/).filter(Boolean);
   return src.map(e => {
     const t = norm(e.text);
-    if (t === q || !words.every(w => t.includes(w))) return null;
-    const score = (t.startsWith(q) ? 100 : t.split(/\s+/).some(w => w.startsWith(words[0])) ? 50 : 0) + e.n;
+    if (!words.every(w => t.includes(w))) return null;
+    // το ίδιο το όνομα που γράφεις (π.χ. σκέτο «Γάλα») μπαίνει πάντα πρώτο
+    const score = (t === q ? 1000 : t.startsWith(q) ? 100 : t.split(/\s+/).some(w => w.startsWith(words[0])) ? 50 : 0) + e.n;
     return { ...e, score };
   }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 6);
 }
@@ -2185,11 +2212,12 @@ function showSuggest(input) {
   sug.input = input; sug.items = items; sug.active = -1;
   if (!items.length) return hideSuggest();
   const q = norm(input.value);
+  const inList = input.id === "qa" && ui.listId ? new Set(itemsOf(ui.listId).map(i => norm(i.name))) : new Set();
   sug.box.innerHTML = items.map((e, i) => {
     const t = e.text, n = norm(t), at = n.indexOf(q);
     const label = at >= 0 && n.length === t.length
       ? `${esc(t.slice(0, at))}<b>${esc(t.slice(at, at + q.length))}</b>${esc(t.slice(at + q.length))}` : esc(t);
-    return `<button type="button" role="option" class="sug" data-sug="${i}" id="sug-${i}">${label}</button>`;
+    return `<button type="button" role="option" class="sug" data-sug="${i}" id="sug-${i}"><span class="sug-t">${label}</span>${inList.has(n) ? `<span class="sug-in">στη λίστα</span>` : ""}</button>`;
   }).join("");
   sug.box.hidden = false;
   placeSuggest();

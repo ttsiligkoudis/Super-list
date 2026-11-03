@@ -577,3 +577,8 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-fees p{margin:0}
 .rcpt-fees ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .rcpt-fees li{display:grid;grid-template-columns:minmax(0,1fr) 96px 40px;gap:6px;align-items:center;color:var(--ink-2)}
+.sug{display:flex;align-items:center;gap:8px}
+.sug-in{margin-left:auto;font-size:.75rem;font-weight:600;color:var(--basil);white-space:nowrap}
+@keyframes rowflash{0%,100%{background:transparent}30%{background:color-mix(in srgb,var(--citrus) 35%,transparent)}}
+.row.flash{animation:rowflash 1.4s ease 2}
+.sug-t{min-width:0}
