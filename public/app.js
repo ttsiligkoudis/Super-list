@@ -1203,7 +1203,7 @@ function showReceipt(text, parsed) {
     // (αν η ίδια η γραμμή ταιριάζει σε προϊόν του διαδρόμου της μάρκας, π.χ. «MELISSA ΚΡΙΘ.» -> κριθαράκι, κερδίζει αυτό)
     // αλλιώς «Μάρκα + τι πουλάει» (Viakal καθαριστικό αλάτων, Wettex σπογγοπετσέτες)
     let m = matchProduct(i.raw, cands);
-    if (br && (!m || m.cat !== br.cat)) m = matchProduct(i.raw, cands.filter(c => c.cat === br.cat));
+    if (br && (!m || m.cat !== br.cat)) m = matchProduct(i.raw, cands.filter(c => c.cat === br.cat)) || m;
     if (!m && br) {
       const first = br.words.split(",")[0].trim(), exact = cands.find(c => c.cat === br.cat && norm(c.name) === norm(first));
       if (exact) m = exact;
