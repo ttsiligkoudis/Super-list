@@ -534,3 +534,4 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-ok .ic{width:14px;height:14px}
 .rcpt-miss{color:var(--danger)}
 .rcpt-note{margin:-6px 0 0}
+#rcptSum.off{color:var(--danger)}

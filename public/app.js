@@ -1107,7 +1107,7 @@ let ocrWorker = null, ocrProgress = null;
 async function ocrWorkerReady() {
   if (!window.Tesseract) await loadScript("/ocr/tesseract.min.js");
   const base = location.origin + "/ocr";
-  if (!ocrWorker) ocrWorker = window.Tesseract.createWorker("ell+eng", 1, {
+  if (!ocrWorker) ocrWorker = window.Tesseract.createWorker("ell", 1, {
     workerPath: base + "/worker.min.js", corePath: base, langPath: base, gzip: true,
     logger: m => ocrProgress && ocrProgress(m)
   }).catch(e => { ocrWorker = null; throw e; });
@@ -1179,7 +1179,7 @@ function rcptReview() {
       ${payFields({ amount, payStore: store }, true, brand)}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
-        <span class="small muted">Άθροισμα <b class="num" id="rcptSum">${eur(sum)}</b></span></div>
+        <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
       <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">
         <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}">
         <div class="money sm"><input class="field num" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
@@ -1196,7 +1196,7 @@ function rcptSumUpdate() {
   const lis = [...document.querySelectorAll(".rcpt-items li")];
   const sum = lis.reduce((a, li) => a + (parseAmount(li.querySelector('[name^="p"]').value) || 0), 0);
   const s = $("#rcptSum"), c = $("#rcptCount");
-  if (s) s.textContent = eur(sum);
+  if (s) { s.textContent = eur(sum); const t = parseAmount(($("#payAmt") || {}).value); s.classList.toggle("off", !!t && Math.abs(t - sum) > 0.009); }
   if (c) c.textContent = lis.length;
 }
 function saveReceipt(f, v) {
@@ -1570,7 +1570,7 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("input", e => {
-  if (e.target.closest && e.target.closest(".rcpt-items")) { rcptSumUpdate(); return; }
+  if (e.target.closest && (e.target.closest(".rcpt-items") || (e.target.id === "payAmt" && e.target.closest(".rcpt")))) { rcptSumUpdate(); return; }
   if (e.target.id !== "pfind") return;
   const q = norm(e.target.value);
   let any = false;
