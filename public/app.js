@@ -2328,8 +2328,10 @@ function recipeToList(id) {
     const p = parseIngredient(line);
     // «πελτέ» -> Πελτές, «μαϊντανό» -> Μαϊντανός: το όνομα του καταλόγου, όταν ταιριάζει η κύρια λέξη
     // (ενικός/πληθυντικός: «κρεμμύδι» = τα «Κρεμμύδια» της λίστας ή του καταλόγου)
-    const sk = stemKey(p.name);
-    const same = itemsOf(l.id).find(i => stemKey(i.name) === sk) || cands.find(c => stemKey(c.name) === sk);
+    // ίδια λέξη αλλά και ίδια νούμερα: το «Γάλα» δεν γίνεται «Γάλα 1,5%»
+    const sk = stemKey(p.name), dg = x => norm(x).replace(/[^\d]/g, ""), pd = dg(p.name);
+    const eq = n => stemKey(n) === sk && dg(n) === pd;
+    const same = itemsOf(l.id).find(i => eq(i.name)) || cands.find(c => eq(c.name));
     if (same) p.name = same.name;
     else if (!BPROD.has(norm(p.name)) && !knownProducts().has(norm(p.name))) { const m = matchProduct(p.name, cands); if (m && m.score >= 10) p.name = m.name; }
     const res = addToList(l.id, line, { p });
@@ -2500,9 +2502,9 @@ function showRow(it) {
   row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
 }
 function suggestions(input) {
-  const q = norm(input.id === "ingNew" ? parseIngredient(input.value).name : input.value);
+  const q = norm(isIng(input) ? parseIngredient(input.value).name : input.value);
   if (!q) return [];
-  const src = input.id === "qa" || input.id === "ingNew" ? productSource() : dishSource();
+  const src = input.id === "qa" || isIng(input) ? productSource() : dishSource();
   const words = q.split(/\s+/).filter(Boolean);
   return src.map(e => {
     const t = norm(e.text);
@@ -2548,14 +2550,15 @@ function pickSuggest(i) {
   const e = sug.items[i], input = sug.input;
   if (!e || !input) return;
   // στα υλικά κρατάμε την ποσότητα που γράφτηκε («500 γρ. κιμ» -> «500 γρ. Κιμάς μοσχαρίσιος»)
-  const qty = input.id === "ingNew" ? parseIngredient(input.value).qty : "";
+  const qty = isIng(input) ? parseIngredient(input.value).qty : "";
   input.value = qty ? `${qty} ${e.text.charAt(0).toLocaleLowerCase("el") + e.text.slice(1)}` : e.text;
   hideSuggest();
   input.dispatchEvent(new Event("input", { bubbles: true }));
   hideSuggest();
   input.focus();
 }
-const suggestTarget = el => el && (el.id === "qa" || el.id === "ingNew" || el.dataset.meal !== undefined || el.dataset.std !== undefined);
+const isIng = el => !!el && (el.id === "ingNew" || el.name === "ing");
+const suggestTarget = el => el && (el.id === "qa" || isIng(el) || el.dataset.meal !== undefined || el.dataset.std !== undefined);
 document.addEventListener("input", e => { if (suggestTarget(e.target)) showSuggest(e.target); });
 document.addEventListener("focusin", e => { if (suggestTarget(e.target)) { e.target.setAttribute("role", "combobox"); e.target.setAttribute("aria-controls", "suggest"); } });
 document.addEventListener("focusout", e => {
@@ -2578,7 +2581,11 @@ document.addEventListener("keydown", e => {
 window.addEventListener("scroll", placeSuggest, { passive: true });
 $("#sheetPanel").addEventListener("scroll", placeSuggest, { passive: true });
 // Enter στο νέο υλικό: προσθήκη (όχι υποβολή της φόρμας)
-document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ingNew") { e.preventDefault(); addIngredient(); } });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !isIng(e.target)) return;
+  e.preventDefault();
+  if (e.target.id === "ingNew") addIngredient(); else { hideSuggest(); e.target.blur(); }
+});
 if (window.visualViewport) window.visualViewport.addEventListener("resize", placeSuggest);
 
 /* ---------- σύρσιμο φαγητών ---------- */
