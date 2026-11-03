@@ -1396,6 +1396,7 @@ function rawWordScore(name, raw) {
 function showReceipt(text, parsed) {
   rcptManual = new Map();
   const r = parsed || parseReceipt(text);
+  rcptExact = !!r.exact; // και όταν επικολλήθηκε το κείμενο της ψηφιακής απόδειξης
   if (!r.items.length && r.total == null) { openSheet(rcptSheet("Δεν βρήκα προϊόντα ή σύνολο. Δοκίμασε πιο καθαρή φωτογραφία, χωρίς σκιές.")); return; }
   const known = knownProducts();
   const cands = [...BPROD.values()].map(p => ({ name: p.name, cat: p.c }))
