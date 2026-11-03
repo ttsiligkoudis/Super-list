@@ -75,6 +75,11 @@ const ICONS = {
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   receipt: '<path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  flame: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.6-5.3 3.6-8.8.3-1 1.7-1.2 2.2-.2.9 1.8 1 3.2 2.4 4.5.5-.9.7-1.7.8-2.5.1-.8 1.1-1.1 1.6-.5 1.4 1.8 2.4 4 2.4 6.6C18.5 18.4 15.9 21 12 21z"/>',
+  chef: '<path d="M7 17h10v3H7z"/><path d="M7 17V12.5A4 4 0 0 1 8.5 5a4 4 0 0 1 7 0A4 4 0 0 1 17 12.5V17"/>',
+  book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
+  image: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.7"/><path d="M4 17l5-4.5 4 3.5 2.5-2 4.5 3.5"/>',
   edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
 };
 // Στο κινητό ο ορθογράφος του browser υπογραμμίζει σωστές λέξεις (το πληκτρολόγιο διορθώνει ήδη),
@@ -541,9 +546,11 @@ function historyView() {
 function ymParts() { const [y, m] = ui.ym.split("-").map(Number); return [y, m]; }
 
 function mealsSeg() {
-  return `<div class="seg two meal-seg" role="group" aria-label="Προβολή">
-    <button type="button" data-act="meal-view" data-v="plan" aria-pressed="${ui.mealView !== "dishes"}">Πρόγραμμα</button>
-    <button type="button" data-act="meal-view" data-v="dishes" aria-pressed="${ui.mealView === "dishes"}">Φαγητά</button>
+  const v = ui.mealView === "dishes" || ui.mealView === "recipes" ? ui.mealView : "plan";
+  return `<div class="seg meal-seg" role="group" aria-label="Προβολή">
+    <button type="button" data-act="meal-view" data-v="plan" aria-pressed="${v === "plan"}">Πρόγραμμα</button>
+    <button type="button" data-act="meal-view" data-v="dishes" aria-pressed="${v === "dishes"}">Φαγητά</button>
+    <button type="button" data-act="meal-view" data-v="recipes" aria-pressed="${v === "recipes"}">Συνταγές</button>
   </div>`;
 }
 
@@ -577,7 +584,7 @@ function dishesView() {
     ${groups.length ? groups.map(g => `<section class="aisle"><h2 class="aisle-sign"><span class="sw" style="--h:${g.hue}"></span>${g.name}<span class="n">${g.items.length}</span></h2>
       <ul class="rows">${g.items.map(e => `<li class="row"><button type="button" class="tick dish-row" data-act="dish-edit" data-key="${esc(e.key)}">
         <span class="label"><span class="name">${esc(e.name)}</span><span class="meta">${e.n ? `${e.n} ${e.n === 1 ? "φορά" : "φορές"} στο πρόγραμμα` : "Δεν έχει μπει ακόμα στο πρόγραμμα"}</span></span>
-        </button><button type="button" class="act" data-act="dish-edit" data-key="${esc(e.key)}" aria-label="Επεξεργασία: ${esc(e.name)}">${ic("edit")}</button></li>`).join("")}</ul></section>`).join("")
+        </button>${(doc.meals["dish:" + e.key] || {}).r ? `<button type="button" class="act" data-act="recipe-open" data-id="${esc(doc.meals["dish:" + e.key].r)}" aria-label="Συνταγή: ${esc(e.name)}">${ic("book")}</button>` : ""}<button type="button" class="act" data-act="dish-edit" data-key="${esc(e.key)}" aria-label="Επεξεργασία: ${esc(e.name)}">${ic("edit")}</button></li>`).join("")}</ul></section>`).join("")
       : `<div class="empty"><p>Δεν υπάρχουν φαγητά ακόμα. Πρόσθεσε τα φαγητά που μαγειρεύετε συνήθως, ή γράψε στο πρόγραμμα και θα εμφανιστούν εδώ.</p></div>`}
     ${builtinSection(list)}`;
 }
@@ -617,6 +624,7 @@ function dishSheet(key) {
 
 function mealsView() {
   if (ui.mealView === "dishes") return dishesView();
+  if (ui.mealView === "recipes") return recipesView();
   const [y, m] = ymParts();
   const days = daysOf(y, m, doc.meals);
   const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
@@ -1833,13 +1841,29 @@ const actions = {
     if (i) { i.done = false; touch(i); changed(); }
     openSheet(basketSheet());
   },
-  "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); render(); window.scrollTo(0, 0); },
+  "meal-view": b => { ui.mealView = b.dataset.v; saveUi(); if (ui.mealView === "recipes") loadRecipes(); render(); window.scrollTo(0, 0); },
   "aisle-toggle": b => { ui.collapsed = { ...(ui.collapsed || {}) }; ui.collapsed[b.dataset.c] = !ui.collapsed[b.dataset.c]; saveUi(); render(); },
   "aisles-all": b => { ui.collapsed = {}; if (b.dataset.v === "shut") CATS.forEach(([c]) => { ui.collapsed[c] = true; }); saveUi(); render(); },
   "past-sheet": () => openSheet(pastSheet()),
   "rcpt-sheet": () => { loadShared(); openSheet(rcptSheet()); },
   "rcpt-copy": async () => { const t = $("#rcptRaw"); if (!t) return; try { await navigator.clipboard.writeText(t.value); toast("Το κείμενο αντιγράφηκε"); } catch { t.select(); document.execCommand("copy"); toast("Το κείμενο αντιγράφηκε"); } },
   "rcpt-link": b => linkRow(b.dataset.k),
+  "recipe-open": b => openRecipe(b.dataset.id),
+  "recipe-new": () => openSheet(recipeFormHtml()),
+  "rcp-cat": b => { ui.rcpCat = b.dataset.c; saveUi(); render(); },
+  "recipe-to-list": b => recipeToList(b.dataset.id),
+  "recipe-to-dishes": b => { const r = recipeCache.get(b.dataset.id); if (!r) return; recipeToDishes(r); changed(); $("#sheetPanel").innerHTML = recipeSheetHtml(r);
+    toast(`«${r.title}» μπήκε στα φαγητά σου`); },
+  "recipe-to-day": b => { const r = recipeCache.get(b.dataset.id); if (r) openSheet(recipeDaySheet(r)); },
+  "recipe-edit": b => { const r = recipeCache.get(b.dataset.id); if (r) openSheet(recipeFormHtml(r)); },
+  "recipe-del": async b => {
+    const r = recipeCache.get(b.dataset.id);
+    if (!r || !(await ask({ title: "Διαγραφή συνταγής;", text: `Η «${r.title}» θα σβηστεί για όλους.`, ok: "Διαγραφή", danger: true }))) return;
+    const res = await fetch(`/api/recipes/${r.id}/delete`, { method: "POST", headers: authH() }).catch(() => null);
+    if (!res || !res.ok) { toast("Δεν σβήστηκε. Δοκίμασε ξανά με internet."); return; }
+    recipeCache.delete(r.id); recipes = recipes.filter(x => x.id !== r.id); ls.set("mm-recipes", recipes); render(); toast("Η συνταγή σβήστηκε");
+  },
+  "rcp-pic-del": b => { rcpImage = "remove"; $("#rcpPic").innerHTML = `<span class="rcp-pic-empty">${ic("image")}</span>`; b.hidden = true; },
   "rcpt-left": b => leftItem(b.dataset.id),
   "link-pick": b => pickLink(b.dataset.k, b.dataset.id),
   "link-close": () => document.querySelectorAll(".link-panel").forEach(x => x.remove()),
@@ -1960,6 +1984,16 @@ document.addEventListener("toggle", e => {
 document.addEventListener("change", e => {
   const el = e.target;
   if (el.id === "rcptFile") { if (el.files[0]) readReceiptFile(el.files[0]); return; }
+  if (el.id === "rcpFile" && el.files[0]) {
+    shrinkImage(el.files[0]).then(blob => {
+      if (!blob) return;
+      if (rcpImage && rcpImage.url) URL.revokeObjectURL(rcpImage.url);
+      rcpImage = { blob, url: URL.createObjectURL(blob) };
+      const pic = $("#rcpPic"); if (pic) pic.innerHTML = `<img src="${rcpImage.url}" alt="">`;
+      const del = document.querySelector('[data-act="rcp-pic-del"]'); if (del) del.hidden = false;
+    }).catch(() => toast("Δεν διαβάστηκε η φωτογραφία"));
+    return;
+  }
   if (el.name === "target" && el.closest(".rcpt")) { rcptPairHint(); return; }
   if (el.name === "cat" && el.closest("#catPicker")) {
     const p = el.closest("#catPicker"), c = CAT[el.value];
@@ -1978,6 +2012,13 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("input", e => {
+  if (e.target.id === "rcpFind") {
+    const q = norm(e.target.value).split(/\s+/).filter(Boolean);
+    let any = false;
+    document.querySelectorAll(".rcp-card").forEach(c => { const hit = q.every(w => c.dataset.q.includes(w)); c.hidden = !hit; if (hit) any = true; });
+    const none = $(".rcp-none"); if (none) { none.hidden = any; if (!any) none.textContent = "Δεν βρέθηκε συνταγή."; }
+    return;
+  }
   if (e.target.matches && e.target.matches("[data-link-find]")) {
     const q = norm(e.target.value), panel = e.target.closest(".link-panel");
     let any = false;
@@ -2054,6 +2095,17 @@ document.addEventListener("submit", e => {
     return;
   }
   if (kind === "rcpt-save") { saveReceipt(f, v); return; }
+  if (kind === "recipe-save") { saveRecipeForm(f, v); return; }
+  if (kind === "recipe-day") {
+    const r = recipeCache.get(f.dataset.id);
+    if (!r || !v.date) return;
+    doc.meals[v.date] = touch({ ...(doc.meals[v.date] || {}), t: r.title });
+    recipeToDishes(r);
+    changed(); closeSheet();
+    const [, mm, dd] = v.date.split("-").map(Number);
+    toast(`«${r.title}» στις ${dd}/${mm}`);
+    return;
+  }
   if (kind === "set-pay") {
     const l = findById("lists", f.dataset.id);
     if (!l) return;
@@ -2107,36 +2159,18 @@ document.addEventListener("submit", e => {
   }
   if (kind === "quick-add") {
     if (!name || !ui.listId) return;
-    const p = parseQuick(name);
-    const known = knownProducts().get(norm(p.name));
-    const sm = storeMap();
-    const order = Math.max(0, ...itemsOf(ui.listId).map(i => i.order || 0)) + 1;
-    const bp = BPROD.get(norm(p.name));
-    // υπάρχει ήδη στη λίστα: δεν μπαίνει δεύτερη φορά, το μήνυμα αφορά την εγγραφή που υπάρχει
-    const finalName = known ? known.name : bp ? bp.name : cap(p.name);
-    const dup = itemsOf(ui.listId).find(i => norm(i.name) === norm(finalName) || norm(i.name) === norm(p.name));
-    if (dup) {
-      const snap = snapshot("items", [dup]);
-      const wasDone = dup.done, qtyChanged = p.qty && p.qty !== dup.qty;
-      if (wasDone) dup.done = false;
-      if (qtyChanged) dup.qty = p.qty;
-      if (wasDone || qtyChanged) { touch(dup); changed(); }
-      $("#qa").value = ""; hideSuggest(); $("#qa").focus();
-      const where = `στο «${CAT[catOf(dup)].name}»`;
-      const msg = wasDone ? `«${dup.name}» ήταν στο καλάθι, ξαναμπήκε στη λίστα${qtyChanged ? ` (${p.qty})` : ""}`
-        : qtyChanged ? `«${dup.name}» υπάρχει ήδη, άλλαξε η ποσότητα σε ${p.qty}` : `«${dup.name}» υπάρχει ήδη ${where}${dup.qty ? ` (${dup.qty})` : ""}`;
-      toast(msg, wasDone || qtyChanged ? { label: "Αναίρεση", run: () => { restore(snap); changed(); } } : { label: "Εμφάνιση", run: () => showRow(dup) });
+    const r = addToList(ui.listId, name, { store: storeMap()[ui.filter] ? ui.filter : "" });
+    $("#qa").value = ""; hideSuggest(); $("#qa").focus();
+    if (r.status === "added") {
+      changed();
+      toast(`${r.item.name} στο «${CAT[r.item.cat].name}»`, { label: "Αλλαγή", run: () => { const i = findById("items", r.item.id); if (i) openSheet(itemSheet(i)); } });
       return;
     }
-    const item = touch({ id: uid(), listId: ui.listId, name: known ? known.name : bp ? bp.name : cap(p.name), qty: p.qty,
-      cat: known && CAT[known.cat] ? known.cat : bp ? bp.c : guessCat(p.name),
-      store: sm[ui.filter] ? ui.filter : (known && sm[known.store] ? known.store : ""),
-      done: false, order });
-    doc.items.push(item);
-    $("#qa").value = "";
-    changed();
-    $("#qa").focus();
-    toast(`${item.name} στο «${CAT[item.cat].name}»`, { label: "Αλλαγή", run: () => { const i = findById("items", item.id); if (i) openSheet(itemSheet(i)); } });
+    const dup = r.item, p = r.p;
+    if (r.status !== "exists") changed();
+    const msg = r.status === "back" ? `«${dup.name}» ήταν στο καλάθι, ξαναμπήκε στη λίστα${p.qty ? ` (${p.qty})` : ""}`
+      : r.status === "qty" ? `«${dup.name}» υπάρχει ήδη, άλλαξε η ποσότητα σε ${p.qty}` : `«${dup.name}» υπάρχει ήδη στο «${CAT[catOf(dup)].name}»${dup.qty ? ` (${dup.qty})` : ""}`;
+    toast(msg, r.status !== "exists" ? { label: "Αναίρεση", run: () => { restore(r.snap); changed(); } } : { label: "Εμφάνιση", run: () => showRow(dup) });
   } else if (kind === "edit-item") {
     const i = findById("items", f.dataset.id);
     if (i && name) { Object.assign(i, { name, qty: (v.qty || "").trim(), cat: v.cat, store: v.store || "" }); touch(i); }
@@ -2157,6 +2191,214 @@ document.addEventListener("submit", e => {
 });
 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+
+/* ---------- συνταγές (δημόσιες, για όλους) ---------- */
+
+const RCATS = [["ospria", "Όσπρια", "#a0522d"], ["ladera", "Λαδερά & λαχανικά", "#3e8e41"], ["nistisima", "Νηστίσιμα", "#6d8b3a"],
+  ["zymarika", "Ζυμαρικά & ρύζι", "#d68910"], ["psaria", "Ψάρια & θαλασσινά", "#2e86c1"], ["poulerika", "Πουλερικά", "#e67e22"],
+  ["kreas", "Κρεατικά", "#c0392b"], ["soupes", "Σούπες", "#c9a227"], ["salates", "Σαλάτες", "#27ae60"], ["pites", "Πίτες & φούρνου", "#b7862b"],
+  ["avga", "Αυγά & ελαφριά", "#d4ac0d"], ["glyka", "Γλυκά", "#c2185b"], ["exo", "Πίτσα, σουβλάκι & street food", "#8e44ad"], ["other", "Άλλα", "#5d6d7e"]];
+const RCAT = Object.fromEntries(RCATS.map(([id, name, hue]) => [id, { name, hue }]));
+const DIFF = { 1: "Εύκολη", 2: "Μέτρια", 3: "Δύσκολη" };
+let recipes = ls.get("mm-recipes", []), recipesAt = 0, recipesBusy = false;
+const recipeCache = new Map();
+const authH = () => session ? { authorization: `Bearer ${session.token}` } : {};
+const imgUrl = r => `/api/recipes/${r.id}/img?v=${r.img}`;
+
+function loadRecipes(force = false) {
+  if (!session || recipesBusy || (!force && now() - recipesAt < 30000)) return;
+  recipesBusy = true;
+  fetch("/api/recipes", { headers: authH() }).then(r => r.ok ? r.json() : null).then(d => {
+    if (Array.isArray(d)) { recipes = d; recipesAt = now(); ls.set("mm-recipes", d); if (ui.tab === "meals" && ui.mealView === "recipes") render(); }
+  }).catch(() => {}).finally(() => { recipesBusy = false; });
+}
+async function getRecipe(id) {
+  if (recipeCache.has(id)) return recipeCache.get(id);
+  const r = await fetch(`/api/recipes/${id}`, { headers: authH() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Δεν βρέθηκε");
+  const d = await r.json();
+  recipeCache.set(id, d);
+  return d;
+}
+const recipeMeta = r => [
+  r.m || r.time ? `${ic("clock")}${r.m ?? r.time}΄` : "",
+  r.k || r.kcal ? `${ic("flame")}${r.k ?? r.kcal} kcal` : "",
+  r.d || r.diff ? `${ic("chef")}${DIFF[r.d ?? r.diff]}` : ""].filter(Boolean).map(x => `<span>${x}</span>`).join("");
+function recipeThumb(r) {
+  const c = RCAT[r.c || r.cat] || RCAT.other;
+  return r.img ? `<img src="${imgUrl(r)}" alt="" loading="lazy">`
+    : `<span class="rcp-ph" style="--h:${c.hue}">${esc(((r.t || r.title || "?").trim().charAt(0)).toLocaleUpperCase("el"))}</span>`;
+}
+function recipesView() {
+  loadRecipes();
+  const cat = ui.rcpCat && RCAT[ui.rcpCat] ? ui.rcpCat : "";
+  const cnt = {};
+  recipes.forEach(r => { cnt[r.c] = (cnt[r.c] || 0) + 1; });
+  const shown = recipes.filter(r => !cat || r.c === cat);
+  return `<div class="month-nav"><h1 class="display">Συνταγές</h1></div>
+    ${mealsSeg()}
+    <p class="sub">Συνταγές από όλους. Βάλε τα υλικά στη λίστα σου με ένα πάτημα ή πρόσθεσε τη συνταγή στα φαγητά σου για το αυτόματο πρόγραμμα.</p>
+    <div class="rcp-tools">
+      <input class="field" type="search" id="rcpFind" placeholder="Αναζήτηση σε τίτλους και υλικά" autocomplete="off" spellcheck="false" aria-label="Αναζήτηση συνταγής">
+      <button type="button" class="btn" data-act="recipe-new">${ic("plus")}Νέα</button>
+    </div>
+    ${recipes.length ? `<div class="chips rcp-cats" role="group" aria-label="Κατηγορία">
+      <button type="button" class="chip" data-act="rcp-cat" data-c="" aria-pressed="${!cat}">Όλες<span class="chip-n num">${recipes.length}</span></button>
+      ${RCATS.filter(([id]) => cnt[id]).map(([id, name]) => `<button type="button" class="chip" data-act="rcp-cat" data-c="${id}" aria-pressed="${cat === id}">${name}<span class="chip-n num">${cnt[id]}</span></button>`).join("")}
+    </div>` : ""}
+    <div class="rcp-grid">${shown.map(r => `<button type="button" class="rcp-card" data-act="recipe-open" data-id="${r.id}" data-q="${esc(norm(r.t + " " + (r.q || "")))}">
+      <span class="rcp-img">${recipeThumb(r)}</span>
+      <span class="rcp-body"><span class="rcp-c" style="--h:${(RCAT[r.c] || RCAT.other).hue}">${esc((RCAT[r.c] || RCAT.other).name)}</span>
+        <span class="rcp-t">${esc(r.t)}</span><span class="rcp-m">${recipeMeta(r)}</span>
+        ${session && r.by === session.uid ? `<span class="rcp-mine">Δική σου</span>` : ""}</span></button>`).join("")}</div>
+    <p class="empty rcp-none" ${shown.length ? "hidden" : ""}>${recipes.length ? "Δεν βρέθηκε συνταγή." : navigator.onLine ? "Δεν υπάρχουν συνταγές ακόμα. Γίνε ο πρώτος που θα ανεβάσει μία!" : "Οι συνταγές θέλουν σύνδεση στο internet."}</p>`;
+}
+
+// Υλικό συνταγής -> προϊόν λίστας: «500 γρ. κιμάς μοσχαρίσιος» -> κιμάς μοσχαρίσιος, 500 γρ
+const MEASURE = "(?:κ\\.?\\s?σ\\.?|κ\\.?\\s?γ\\.?|κουταλι\\S*|κουταλακ\\S*|φλιτζαν\\S*|ποτηρ\\S*|σκελιδ\\S*|πρεζα|πρέζα|ματσακ\\S*|ματσάκ\\S*|ματσ\\S*|γρ\\.?|γραμμ\\S*|κιλ\\S*|kg|g|ml|λιτρ\\S*|λίτρ\\S*|lt|τεμ\\.?|φετ(?:α|ες)\\b|κομματ\\S*|κομμάτ\\S*|συσκευασ\\S*|κονσερβ\\S*|κονσέρβ\\S*|κύβο\\S*|κυβο\\S*)";
+function parseIngredient(line) {
+  // ταίριασμα πάνω στο κείμενο χωρίς τόνους (ίδιο μήκος με το κανονικό σε NFC) και κόψιμο από το κανονικό
+  const s = String(line).normalize("NFC").trim().replace(/^[-•*·]\s*/, "");
+  const pl = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const m = pl.length === s.length ? pl.match(new RegExp(`^([\\d.,½¼¾⅓\\/\\s-]+)?\\s*(${MEASURE})?\\s*`, "i")) : null;
+  let qty = "", name = s;
+  if (m) { qty = s.slice(0, m[0].length).replace(/\s+/g, " ").trim(); name = s.slice(m[0].length); }
+  name = name.replace(/^(?:λίγ[οηα]|λιγ[οηα]|μισ[οόήη]|ολίγ\S*|από|απο|με)\s+/i, "")
+    .split(/,|\(| για | ή /)[0].trim()
+    .replace(/(\s+\S*(?:μένο|μένη|μένα|μένες|μένοι|μένος|μενο|μενη|μενα|μενες))+$/i, "").trim();
+  return { name: name || s, qty: /[\d½¼¾⅓]/.test(qty) ? qty : "" };
+}
+
+function recipeSheetHtml(r) {
+  const c = RCAT[r.cat] || RCAT.other, mine = session && r.by === session.uid;
+  const inList = ui.listId ? new Set(itemsOf(ui.listId).map(i => norm(i.name))) : new Set();
+  const dish = doc.meals[dishKey(r.title)];
+  return `${r.img ? `<div class="rcp-hero"><img src="${imgUrl(r)}" alt=""></div>` : ""}
+    <span class="rcp-c" style="--h:${c.hue}">${esc(c.name)}</span>
+    <h2 class="sheet-title">${esc(r.title)}</h2>
+    <div class="rcp-m big">${recipeMeta(r)}${r.servings ? `<span>${r.servings} ${r.servings === 1 ? "μερίδα" : "μερίδες"}</span>` : ""}${r.kcal ? `<span class="muted small">θερμίδες ανά μερίδα</span>` : ""}</div>
+    <h3 class="rcp-h">Υλικά</h3>
+    <ul class="rcp-ing">${r.ingredients.map((x, i) => { const p = parseIngredient(x), has = inList.has(norm(p.name));
+      return `<li><label><input type="checkbox" data-ing="${i}" ${has ? "" : "checked"}><span>${esc(x)}</span>${has ? `<em>στη λίστα</em>` : ""}</label></li>`; }).join("")}</ul>
+    <button type="button" class="btn wide" data-act="recipe-to-list" data-id="${r.id}">${ic("plus")}Βάλε τα επιλεγμένα στη λίστα</button>
+    ${r.steps.length ? `<h3 class="rcp-h">Εκτέλεση</h3><ol class="rcp-steps">${r.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+    <div class="rcp-actions">
+      <button type="button" class="btn ghost" data-act="recipe-to-dishes" data-id="${r.id}"${dish && !dish.hidden && dish.r === r.id ? " disabled" : ""}>${ic("book")}${dish && !dish.hidden && dish.r === r.id ? "Είναι στα φαγητά σου" : "Στα φαγητά μου"}</button>
+      <button type="button" class="btn ghost" data-act="recipe-to-day" data-id="${r.id}">${ic("plus")}Στο πρόγραμμα</button>
+    </div>
+    ${mine ? `<div class="trip-minor"><button type="button" class="btn ghost" data-act="recipe-edit" data-id="${r.id}">${ic("edit")}Επεξεργασία</button>
+      <button type="button" class="btn ghost danger-text" data-act="recipe-del" data-id="${r.id}">${ic("trash")}Διαγραφή</button></div>` : ""}`;
+}
+async function openRecipe(id) {
+  openSheet(`<p class="sheet-text">Φορτώνει η συνταγή…</p>`);
+  try { const r = await getRecipe(id); if (!$("#sheet").hidden) $("#sheetPanel").innerHTML = recipeSheetHtml(r); }
+  catch (e) { if (!$("#sheet").hidden) $("#sheetPanel").innerHTML = `<p class="sheet-text">${esc(navigator.onLine ? e.message : "Η συνταγή θέλει σύνδεση στο internet.")}</p>`; }
+}
+// Τα υλικά στην τρέχουσα λίστα (ή σε νέα, αν δεν υπάρχει ανοιχτή)
+function recipeToList(id) {
+  const r = recipeCache.get(id);
+  if (!r) return;
+  let l = ui.listId && findById("lists", ui.listId);
+  if (!l || l.deleted || l.closedAt) {
+    l = openLists()[0];
+    if (!l) { l = touch({ id: uid(), name: listName(), createdAt: now() }); doc.lists.push(l); }
+    ui.listId = l.id; saveUi();
+  }
+  const picked = [...document.querySelectorAll("#sheetPanel [data-ing]")].filter(x => x.checked).map(x => r.ingredients[+x.dataset.ing]);
+  if (!picked.length) { toast("Δεν διάλεξες υλικά"); return; }
+  const before = snapshot("items", itemsOf(l.id)), added = [];
+  let had = 0;
+  // «Αλάτι, πιπέρι» / «αλάτι και πιπέρι» χωρίς ποσότητες = δύο υλικά
+  const lines = picked.flatMap(x => /\d/.test(x) ? [x] : x.split(/,| και /).map(y => y.trim()).filter(Boolean));
+  const cands = [...BPROD.values()].map(b => ({ name: b.name, cat: b.c }));
+  for (const line of lines) {
+    const p = parseIngredient(line);
+    // «πελτέ» -> Πελτές, «μαϊντανό» -> Μαϊντανός: το όνομα του καταλόγου, όταν ταιριάζει η κύρια λέξη
+    if (!BPROD.has(norm(p.name)) && !knownProducts().has(norm(p.name))) { const m = matchProduct(p.name, cands); if (m && m.score >= 10) p.name = m.name; }
+    const res = addToList(l.id, line, { p });
+    if (res.status === "added") added.push(res.item); else had++;
+  }
+  changed();
+  closeSheet();
+  toast(`${added.length ? `${added.length} ${added.length === 1 ? "υλικό μπήκε" : "υλικά μπήκαν"} στη λίστα «${l.name}»` : "Όλα υπήρχαν ήδη στη λίστα"}${had && added.length ? ` (${had} υπήρχαν ήδη)` : ""}`,
+    { label: "Αναίρεση", run: () => { restore(before); added.forEach(i => { i.deleted = true; touch(i); }); changed(); } });
+}
+const dishCatOf = r => DCAT[r.cat] ? r.cat : r.cat === "soupes" ? (guessDishCat(r.title) !== "other" ? guessDishCat(r.title) : "other") : guessDishCat(r.title);
+function recipeToDishes(r) {
+  const k = dishKey(r.title), cur = doc.meals[k] || {};
+  doc.meals[k] = touch({ ...cur, t: r.title, c: DCAT[cur.c] && !cur.hidden ? cur.c : dishCatOf(r), r: r.id, hidden: false });
+}
+function recipeDaySheet(r) {
+  // πρώτη κενή μέρα από σήμερα και μετά
+  let d = new Date(today);
+  for (let i = 0; i < 60; i++) { const k = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; if (!mealOf(k)) break; d.setDate(d.getDate() + 1); }
+  const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `<h2 class="sheet-title">${esc(r.title)}</h2><p class="sheet-text small">Ποια μέρα; Μπαίνει και στα φαγητά σου.</p>
+    <form data-form="recipe-day" data-id="${r.id}" autocomplete="off">
+      <label class="fld">Ημερομηνία<input class="field" type="date" name="date" value="${iso}" required></label>
+      <div class="sheet-actions split"><button type="button" class="btn ghost" data-act="close-sheet">Άκυρο</button><button class="btn" type="submit">Προσθήκη</button></div>
+    </form>`;
+}
+let rcpImage = null; // { blob, url } ή "remove"
+function recipeFormHtml(r = {}) {
+  rcpImage = null;
+  const cat = r.cat || "";
+  return `<h2 class="sheet-title">${r.id ? "Επεξεργασία συνταγής" : "Νέα συνταγή"}</h2>
+    <p class="sheet-text small">Οι συνταγές είναι δημόσιες: τις βλέπουν όλοι οι χρήστες της εφαρμογής.</p>
+    <form data-form="recipe-save" data-id="${r.id || ""}" autocomplete="off" class="rcp-form">
+      <label class="fld">Τίτλος<input class="field" name="title" value="${esc(r.title || "")}" required maxlength="100" spellcheck="${SPELL}" placeholder="π.χ. Φασολάδα"></label>
+      <div class="fld"><span>Φωτογραφία <span class="muted">Προαιρετικό</span></span>
+        <div class="rcp-pic" id="rcpPic">${r.img ? `<img src="${imgUrl(r)}" alt="">` : `<span class="rcp-pic-empty">${ic("image")}</span>`}</div>
+        <div class="split-btns"><label class="btn ghost">${ic("camera")}Επιλογή<input type="file" accept="image/*" id="rcpFile" hidden></label>
+          <button type="button" class="btn ghost" data-act="rcp-pic-del"${r.img ? "" : " hidden"}>${ic("trash")}Αφαίρεση</button></div></div>
+      <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Κατηγορία</legend>
+        <div class="radios">${RCATS.map(([id, name]) => `<label><input type="radio" name="cat" value="${id}"${id === cat ? " checked" : ""} required><span>${name}</span></label>`).join("")}</div></fieldset>
+      <div class="rcp-nums">
+        <label class="fld">Χρόνος (λεπτά)<input class="field num" name="time" inputmode="numeric" value="${r.time ?? ""}" placeholder="45"></label>
+        <label class="fld">Θερμίδες/μερίδα<input class="field num" name="kcal" inputmode="numeric" value="${r.kcal ?? ""}" placeholder="450"></label>
+        <label class="fld">Μερίδες<input class="field num" name="servings" inputmode="numeric" value="${r.servings ?? ""}" placeholder="4"></label>
+      </div>
+      <fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0;margin-bottom:6px">Δυσκολία</legend>
+        <div class="radios">${[1, 2, 3].map(d => `<label><input type="radio" name="diff" value="${d}"${(r.diff || 1) === d ? " checked" : ""}><span>${DIFF[d]}</span></label>`).join("")}</div></fieldset>
+      <label class="fld">Υλικά <span class="muted">ένα σε κάθε γραμμή</span><textarea class="field" name="ingredients" rows="7" required spellcheck="${SPELL}" placeholder="500 γρ. φασόλια μέτρια&#10;2 καρότα&#10;1 κρεμμύδι&#10;1 φλιτζάνι ελαιόλαδο">${esc((r.ingredients || []).join("\n"))}</textarea></label>
+      <label class="fld">Εκτέλεση <span class="muted">ένα βήμα σε κάθε γραμμή</span><textarea class="field" name="steps" rows="7" spellcheck="${SPELL}" placeholder="Μουλιάζουμε τα φασόλια από το βράδυ.&#10;Τα βράζουμε 10 λεπτά και πετάμε το νερό.">${esc((r.steps || []).join("\n"))}</textarea></label>
+      <div class="sheet-actions split"><button type="button" class="btn ghost" data-act="close-sheet">Άκυρο</button><button class="btn" type="submit">${r.id ? "Αποθήκευση" : "Δημοσίευση"}</button></div>
+    </form>`;
+}
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close && bmp.close();
+  return new Promise(res => c.toBlob(res, "image/jpeg", 0.8));
+}
+async function saveRecipeForm(f, v) {
+  if (!navigator.onLine) { toast("Η δημοσίευση θέλει σύνδεση στο internet"); return; }
+  const btn = f.querySelector('button[type="submit"]');
+  btn.disabled = true; btn.textContent = "Αποθήκευση…";
+  try {
+    const body = { id: f.dataset.id || undefined, title: v.title, cat: v.cat, time: v.time, kcal: v.kcal, servings: v.servings, diff: v.diff,
+      ingredients: v.ingredients, steps: v.steps, noImg: rcpImage === "remove" };
+    let res = await fetch("/api/recipes", { method: "POST", headers: { ...authH(), "content-type": "application/json" }, body: JSON.stringify(body) });
+    let r = await res.json();
+    if (!res.ok) throw new Error(r.error || "Δεν αποθηκεύτηκε");
+    if (rcpImage && rcpImage.blob) {
+      res = await fetch(`/api/recipes/${r.id}/img`, { method: "POST", headers: { ...authH(), "content-type": "image/jpeg" }, body: rcpImage.blob });
+      if (res.ok) r = await res.json(); else toast("Η συνταγή αποθηκεύτηκε, αλλά όχι η φωτογραφία");
+    }
+    recipeCache.set(r.id, r);
+    loadRecipes(true);
+    ui.tab = "meals"; ui.mealView = "recipes"; saveUi();
+    $("#sheetPanel").innerHTML = recipeSheetHtml(r);
+    render();
+    toast(body.id ? "Η συνταγή άλλαξε" : "Η συνταγή δημοσιεύτηκε");
+  } catch (e) {
+    toast(e.message);
+    btn.disabled = false; btn.textContent = f.dataset.id ? "Αποθήκευση" : "Δημοσίευση";
+  }
+}
 
 /* ---------- προτάσεις καθώς γράφεις ---------- */
 
@@ -2182,6 +2424,31 @@ function productSource() {
   }
   for (const [k, b] of BPROD) if (!m.has(k)) m.set(k, { text: b.name, n: 0 });
   return [...m.values()];
+}
+// Προσθήκη προϊόντος σε λίστα («Γάλα 2», «500 γρ κιμάς»). Αν υπάρχει ήδη, δεν μπαίνει δεύτερη φορά:
+// ξαναμπαίνει από το καλάθι ή αλλάζει η ποσότητα. Επιστρέφει { status: added|exists|back|qty, item, p, snap }.
+function addToList(listId, text, { store = "", p: given } = {}) {
+  const p = given || parseQuick(text);
+  const known = knownProducts().get(norm(p.name));
+  const bp = BPROD.get(norm(p.name));
+  const sm = storeMap();
+  const finalName = known ? known.name : bp ? bp.name : cap(p.name);
+  const items = itemsOf(listId);
+  const dup = items.find(i => norm(i.name) === norm(finalName) || norm(i.name) === norm(p.name));
+  if (dup) {
+    const snap = snapshot("items", [dup]);
+    const wasDone = dup.done, qtyChanged = !!p.qty && p.qty !== dup.qty;
+    if (wasDone) dup.done = false;
+    if (qtyChanged) dup.qty = p.qty;
+    if (wasDone || qtyChanged) touch(dup);
+    return { status: wasDone ? "back" : qtyChanged ? "qty" : "exists", item: dup, p, snap };
+  }
+  const order = Math.max(0, ...items.map(i => i.order || 0)) + 1;
+  const item = touch({ id: uid(), listId, name: finalName, qty: p.qty,
+    cat: known && CAT[known.cat] ? known.cat : bp ? bp.c : guessCat(p.name),
+    store: sm[store] ? store : (known && sm[known.store] ? known.store : ""), done: false, order });
+  doc.items.push(item);
+  return { status: "added", item, p };
 }
 // Ανοίγει τον διάδρομο, πάει στη γραμμή και την αναβοσβήνει
 function showRow(it) {

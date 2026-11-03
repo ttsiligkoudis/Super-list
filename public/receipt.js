@@ -314,7 +314,8 @@ export function matchProduct(rawName, candidates) {
     // όταν η λέξη της απόδειξης είναι μεγαλύτερη από την κύρια λέξη του προϊόντος («ΚΡΕΜΑΣΑΠ» και «Κρέμα»),
     // το προϊόν καλύπτει μόνο ένα κομμάτι της, άρα είναι λιγότερο πιθανό από ένα που την καλύπτει όλη (Κρεμοσάπουνο)
     const cover = headTok ? Math.min(1, head.length / headTok.length) : 0;
-    const score = (headTok ? 10 : 0) + hs + exact * 0.5 + sh * 0.3 + cover * 0.6 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
+    const same = headTok && plain(headTok) === head ? 0.5 : 0; // ίδια λέξη («πιπέρι») πάνω από συνέχειά της («πιπεριές»)
+    const score = (headTok ? 10 : 0) + hs + exact * 0.5 + sh * 0.3 + cover * 0.6 + same + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
     if (!best || score > best.score) best = { ...c, score };
   }
   return best;
