@@ -1,6 +1,7 @@
 // Ανάγνωση κειμένου απόδειξης (από OCR ή επικόλληση): κατάστημα, ημερομηνία, σύνολο και προϊόντα.
 // Καθαρή συνάρτηση χωρίς DOM, για να δοκιμάζεται εύκολα.
 import { BUILTIN_PRODUCTS } from "./products.js";
+import { PRODUCT_BRANDS } from "./brands.js";
 
 const STORE_HINTS = [
   ["lidl", /λ[ιι]ντ[λα]|aint[aα]|lidl|λ[ιι]dl/i],
@@ -17,7 +18,9 @@ const HOMO = { A: "Α", B: "Β", E: "Ε", Z: "Ζ", H: "Η", I: "Ι", K: "Κ", M:
 const GREEK = /[Ͱ-Ͽἀ-῿]/;
 
 // Κάθε κομμάτι ανάμεσα σε κενά και τελείες ελέγχεται χωριστά
-export const fixWord = w => w.split(/(\.)/).map(p => fixSpelling(fixUnit(fixPart(p)))).join("");
+// τόνοι σε κεφαλαία απόδειξης («ΠΑΨΛΊΔΗΣ») είναι θόρυβος του OCR
+const noTonos = p => /^[Α-ΩΆΈΉΊΌΎΏΪΫ]+$/.test(p) ? p.normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC") : p;
+export const fixWord = w => w.split(/(\.)/).map(p => fixSpelling(fixUnit(fixPart(noTonos(p))))).join("");
 // «3706», «30046», «1804» στο τέλος ονόματος: το OCR διάβασε το G (γραμμάρια) σαν 6, 4 ή α
 const fixUnit = w => w.replace(/^(\d{0,2}[ΧX]?\d{1,3}[05])(?:46|06|0α|6|4|α)$/, "$1G").replace(/(\d)[ΊΙ](?=\d)|(^|[ΧX])[ΊΙ](?=\d)/g, (m, d, x) => (d ?? x) + "1");
 
@@ -43,12 +46,13 @@ let PREFIX = null;
 function prefixes() {
   if (PREFIX) return PREFIX;
   PREFIX = new Set();
-  const words = RECEIPT_WORDS.split(/\s+/).concat(BUILTIN_PRODUCTS.flatMap(([n]) => upPlain(n).split(/[^Α-Ω]+/)));
+  const words = RECEIPT_WORDS.split(/\s+/).concat(BUILTIN_PRODUCTS.flatMap(([n]) => upPlain(n).split(/[^Α-Ω]+/)),
+    PRODUCT_BRANDS.flatMap(([v]) => upPlain(v).split(/[^Α-Ω]+/))); // και οι μάρκες («ΠΑΨΛΙΔΗΣ» -> ΠΑΥΛΙΔΗΣ)
   for (const w of words) for (let i = 2; i <= w.length; i++) PREFIX.add(w.slice(0, i));
   return PREFIX;
 }
 const CONFUSE = { Ε: "ΣΞ", Σ: "ΕΖΞ", Ζ: "Σ", Ξ: "ΣΕ", Α: "ΛΔ", Λ: "ΑΔ", Δ: "ΑΛ", Ν: "ΠΜΗ", Π: "ΝΗ", Μ: "ΝΗ", Η: "ΝΜΠ",
-  Γ: "ΤΙ", Τ: "ΓΙ", Ι: "ΤΓΛ", Ρ: "Φ", Φ: "Ρ", Ο: "ΘΩ", Θ: "Ο", Ω: "Ο", Υ: "Χ", Χ: "Υ" };
+  Γ: "ΤΙ", Τ: "ΓΙ", Ι: "ΤΓΛ", Ρ: "Φ", Φ: "Ρ", Ο: "ΘΩ", Θ: "Ο", Ω: "Ο", Υ: "ΧΨ", Χ: "Υ", Ψ: "Υ" };
 // Αν το κομμάτι (ελληνικά κεφαλαία) δεν είναι αρχή καμίας γνωστής λέξης, δοκιμάζει έως 2 αλλαγές μπερδεμένων γραμμάτων
 function fixSpelling(w) {
   if (!/^[Α-Ω]{3,}$/.test(w)) return w;
@@ -120,12 +124,14 @@ function itemLine(l) {
   // μόνο ποσοστό ΦΠΑ, χωρίς τιμή
   if (nums.length === 1 && (/%$/.test(p) || /^\d{1,2}\.\d{2}\d?$/.test(p) && /^(6|13|24|4|9|17)\./.test(p))) return null;
   if (nums.length === 3) toks.push(nums[0]); // περισσευούμενο κομμάτι πάει στο όνομα
+  // «082.13»: καμία τιμή δεν ξεκινά με 0 και άλλο ψηφίο, τα μπροστινά είναι θόρυβος -> 2.13
+  p = p.replace(/^(-?)0\d*(\d[.,]\d{2})/, "$1$2");
   if (p[0] === "?") return { name: toks.join(" "), price: 0, unknown: p.slice(2) };
   const price = num(p.replace(/[%]$/, ""));
   // τιμή με τρία δεκαδικά: το OCR πρόσθεσε ένα ψηφίο, κρατάμε και τις άλλες εκδοχές για έλεγχο με το σύνολο
   const d = p.match(/^(-?\d+)[.,](\d)(\d)(\d)$/);
   const alts = d ? [+`${d[1]}.${d[2]}${d[3]}`, +`${d[1]}.${d[2]}${d[4]}`, +`${d[1]}.${d[3]}${d[4]}`] : null;
-  return price ? { name: toks.join(" "), price, alts } : null;
+  return price ? { name: toks.join(" "), price, alts, n: nums.length } : null;
 }
 
 export function parseReceipt(text, opts = {}) {
@@ -134,12 +140,14 @@ export function parseReceipt(text, opts = {}) {
   const srcIdx = [];
   const lines = raw.split("\n").map(l => l.replace(/[΄᾿’‘“”`´]/g, " ").replace(/\s+/g, " ").trim())
     // γραμμή μόνο με νούμερα (ζυγιζόμενα: ποσότητα, τιμή μονάδας, ποσό, ΦΠΑ): «5 50» πριν το ΦΠΑ = 5,50
-    .map(l => /[A-Za-zΑ-Ωα-ω]{2}/.test(l) ? l : l.replace(/(^|\s)(\d{1,3}) (\d{2})(?=\s+\S+$)/, "$1$2,$3"))
+    .map(l => /[A-Za-zΑ-Ωα-ω]{2}/.test(l) ? l : l.replace(/(?<=\d)[οΟoO]|[οΟoO](?=\d)/g, "0").replace(/(^|\s)(\d{1,3}) (\d{2})(?=\s+\S+$)/, "$1$2,$3"))
     // ΦΠΑ στο τέλος με κενό αντί για κόμμα («24 004», «13 00χ») και η τιμή πριν από αυτό («24 78»)
-    .map(l => l.replace(/(\s)(6|13|24) (00\d?\S{0,2})$/, "$1$2,$3").replace(/(\s\d{1,3}) (\d{2})(?= (?:6|13|24)[,.]\d{2,3}\S{0,2}$)/, "$1,$2"))
+    .map(l => l.replace(/(\s)(6|13|24)[,.]? (00\d?\S{0,2})$/, "$1$2,$3").replace(/(\s\d{1,3}) (\d{2})(?= (?:6|13|24)[,.]\d{2,3}\S{0,2}$)/, "$1,$2")
+      // «110 13,00»: τριψήφιο χωρίς κόμμα πριν το ΦΠΑ = 1,10
+      .replace(/(\s)(\d)(\d{2})\.?(?= (?:6|13|24)[,.]\d{2,3}\S{0,2}$)/, "$1$2,$3"))
     // «4:25», «1/56»: άνω τελεία ή κάθετος αντί για κόμμα σε τιμή
     .map(l => l.replace(/(\s-?\d{1,3})[:\/](\d{2})(?=[\s.,']|$)/g, "$1,$2").replace(/(\d[.,]\d)\](?=\s|$)/g, "$17"))
-    .map(l => l.replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter((l, i) => l && srcIdx.push(i));
+    .map(l => l.replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(?<![.,]\d*)(\d) ?([.,]) (?=\d{2}\b)|(?<![.,]\d*)(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter((l, i) => l && srcIdx.push(i));
   const low = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   // κατάστημα
@@ -177,7 +185,7 @@ export function parseReceipt(text, opts = {}) {
   const allMoney = l => (spaced(l).match(MONEY_G) || []).map(num).filter(n => n > 0);
   for (let i = 0; i < lines.length; i++) {
     const k = keyOf(lines[i]);
-    if (!/(^|[^α-ω])(γενικο )?[σζ]υν(ο[λα]ο|\.)|πληρωτε|(^|\s)total|συνολικο ποσο/.test(k) && !/(^|\s)total/i.test(lines[i])) continue;
+    if (!/(^|[^α-ω])(γενικο )?[σζ]υν(ο[λα]ο|\.)|^[σζ]υν[α-ω]{1,3}\s+\d|πληρωτε|(^|\s)total|συνολικο ποσο/.test(k) && !/(^|\s)total/i.test(lines[i])) continue;
     if (/υποσυν|συνολα|συνολο (φπα|τεμ|ειδ|εκπτ|ποσοτ)|τεμαχ|εξοικον/.test(k)) continue;
     let t = lastMoney(spaced(lines[i]));
     totalCands.push(...allMoney(lines[i]));
@@ -198,13 +206,20 @@ export function parseReceipt(text, opts = {}) {
     let l = lines[li].replace(/[.,;:'’]+(?=\s|$)/g, m => /\d$/.test(m) ? m : "");
     // το OCR χώρισε το όνομα από την τιμή σε δύο γραμμές
     const nx = lines[li + 1];
-    if (nx && !itemLine(l) && /[Α-ΩA-Z]{3}/.test(l) && !/[A-Za-zΑ-Ωα-ω]/.test(nx) && itemLine("Χ " + nx)) { l = l + " " + nx; li++; }
+    if (nx && !itemLine(l) && /[Α-ΩA-Z]{3}/.test(l) && (!/[A-Za-zΑ-Ωα-ω]{2}/.test(nx) || /^\W*\d/.test(nx) && !/[A-Za-zΑ-Ωα-ω]{3}/.test(nx)) && itemLine("Χ " + nx)) { l = l + " " + nx; li++; }
     const n = l.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
     if (/^(γενικο )?[σζ]υνο[λα]ο(?! (φπα|τεμ|ειδ))|^πληρωτε|^total/.test(keyOf(l)) && items.length) break;
-    if (DISCOUNT.test(n) || /lidl plus|\[141|εκπτωση/.test(n)) {
+    // «εκητώση»: η λέξη έκπτωση με ένα-δύο λάθη γράμματα
+    const fw = keyOf(l.replace(/^[^A-Za-zΑ-Ωα-ω]+/, "").split(" ")[0]);
+    const discLike = fw.length >= 6 && fw.length <= 9 && dice(bigrams(fw), bigrams("εκπτωση")) >= 0.5;
+    if (DISCOUNT.test(n) || discLike || /lidl plus|\[141|εκπτωση/.test(n)) {
       const m = l.match(new RegExp(`(-\\s?${MONEY.slice(2)})\\s*$`));
       const prev = items[items.length - 1];
-      if (m && prev) prev.price = Math.round((prev.price + num(m[1].replace(/\s/g, ""))) * 100) / 100;
+      let off = m ? -num(m[1].replace(/\s/g, "")) : 0;
+      // με στήλη ΦΠΑ μετά («-0,72 13,00%»): το ποσό της έκπτωσης είναι το αρνητικό πριν από αυτό
+      if (!off) { const neg = [...l.replace(/(?<=-[-\s]?)[ΊΙIl|](?=[\s.,\d])/g, "1").replace(/(?<=-[-\s]?)[ΟOοθΘ](?=[.,])/g, "0").matchAll(/-[-\s]?(\d{1,3})(?:[.,]\s?|\s)(\d{2})(?!\d)/g)].pop(); if (neg) off = +`${neg[1]}.${neg[2]}`; }
+      if (!off) { const it = itemLine(l.replace(/[«]/g, "-")); if (it && Math.abs(it.price) < 100) off = Math.abs(it.price); }
+      if (off && prev && off < prev.price) prev.price = Math.round((prev.price - off) * 100) / 100;
       continue;
     }
     const q = l.match(QTY_LINE);
@@ -235,8 +250,12 @@ export function parseReceipt(text, opts = {}) {
         continue;
       }
     }
-    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown, fee });
+    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown, fee, n: m.n });
   }
+  // Απόδειξη με στήλη ΦΠΑ (τιμή + ΦΠΑ σε κάθε γραμμή): γραμμή με μόνο «24,00» / «13,00» / «6,00» είναι
+  // το ΦΠΑ, η τιμή χάθηκε (π.χ. έπεσε στη γραμμή του barcode). Μένει το προϊόν, χωρίς τιμή.
+  if (items.length >= 5 && items.filter(i => i.n >= 2).length >= items.length * 0.6)
+    for (const it of items) if (it.n === 1 && [6, 13, 24].includes(it.price)) { it.price = 0; it.noPrice = true; delete it.alts; }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
   const sum = items.reduce((a, i) => a + i.price, 0);
@@ -248,7 +267,8 @@ export function parseReceipt(text, opts = {}) {
   if (agreed && (!sum || agreed >= sum * 0.7)) total = agreed;
   else if (sum > 0 && totalCands.length) {
     const far = t => t == null || Math.abs(t - sum) > Math.max(1, sum * 0.1);
-    if (far(total)) {
+    // και όταν οι γραμμές συνόλου/πληρωμής διαφωνούν (π.χ. 158,82 και 188,82): η πιο κοντινή στο άθροισμα
+    if (far(total) || new Set(totalCands.map(n => n.toFixed(2))).size > 1) {
       const best = totalCands.reduce((a, b) => Math.abs(b - sum) < Math.abs(a - sum) ? b : a);
       if (!far(best)) total = best;
     }
@@ -281,7 +301,7 @@ export function parseReceipt(text, opts = {}) {
       it.price = best;
     }
   }
-  items.forEach(i => { delete i.alts; delete i.base0; delete i.unknown; });
+  items.forEach(i => { delete i.alts; delete i.base0; delete i.unknown; delete i.n; });
   return { store, date, total, items };
 }
 
@@ -364,7 +384,10 @@ export function mergeLatin(gWords, eWords) {
   for (const g of nameWords) {
     const es = eWords.filter(e => overlap(g, e) > 0.5 && /[A-Za-z]/.test(e.text));
     // μόνο τα γράμματα πριν τους αριθμούς μετράνε («ZOM.K.120G»: το G είναι γραμμάρια)
-    const good = e => LATIN_ONLY.test(e.text.replace(/\d.*$/, "")) && e.confidence >= 50 && e.confidence > g.confidence;
+    // γνωστή ελληνική λέξη («ΡΟΛΟ», «ΚΟΥΖΙΝΑΣ») μένει ελληνική, όσο σίγουρο κι αν είναι το αγγλικό («POAD»)
+    const gk = upPlain(g.text.split(" ").map(fixWord).join("")).replace(/[^Α-Ω]/g, "");
+    const greekOk = gk.length >= 4 && prefixes().has(gk);
+    const good = e => !greekOk && LATIN_ONLY.test(e.text.replace(/\d.*$/, "")) && e.confidence >= 50 && e.confidence > g.confidence;
     const short = e => prevLatin && !/[a-z]/.test(e.text) && e.text.replace(/[^A-Z]/g, "").length <= 3 && e.confidence >= g.confidence - 10;
     if (es.length && es.some(good) && es.every(e => good(e) || short(e) || !/[A-Za-z]{2}/.test(e.text))) {
       out.push(es.map(e => e.text).join(" "));

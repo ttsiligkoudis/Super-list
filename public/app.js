@@ -1296,6 +1296,14 @@ async function readReceiptFiles(files, append = false) {
 let rcpt = null;
 // Χειροκίνητες αντιστοιχίσεις στην οθόνη ελέγχου: γραμμή απόδειξης -> id προϊόντος της λίστας ή "new"
 let rcptManual = new Map();
+// Πόσες λέξεις του ονόματος φαίνονται στη γραμμή της απόδειξης (ολόκληρες, σχεδόν ίδιες ή ως συντομογραφία «ΚΟΤ»)
+function rawWordScore(name, raw) {
+  const ws = s => norm(s).split(/[^a-zα-ω0-9]+/).map(w => w.replace(/\d/g, "")).filter(w => w.length >= 3);
+  const rw = ws(raw).concat(ws(raw.replace(/[^\p{L}\s]/gu, ""))), nw = ws(name);
+  const bg = w => { const o = new Set(); for (let k = 0; k < w.length - 1; k++) o.add(w.slice(k, k + 2)); return o; };
+  const dice = (a, b) => { const A = bg(a), B = bg(b); let n = 0; for (const x of A) if (B.has(x)) n++; return 2 * n / (A.size + B.size || 1); };
+  return nw.filter(w => rw.some(r => dice(w, r) >= 0.6 || (r.length >= 3 && w.startsWith(r)))).length;
+}
 function showReceipt(text, parsed) {
   rcptManual = new Map();
   const r = parsed || parseReceipt(text);
@@ -1318,6 +1326,16 @@ function showReceipt(text, parsed) {
     // Με μάρκα: δεκτό ό,τι είναι στον διάδρομό της ή μοιάζει με κάτι που φτιάχνει («ΓΙΩΤΗΣ ΡΥΖΑΛΕΥΡΟ» -> ρυζάλευρο).
     // Αλλιώς (π.χ. «HIPP ΒΑΖ.ΜΗΛΟ» -> μηλόξυδο) εμπιστευόμαστε τη μάρκα: ψάχνουμε στα δικά της ή γράφουμε «Μάρκα + τι πουλάει».
     let m = matchProduct(i.raw, cands);
+    // μάρκα που φτιάχνει κάτι που φαίνεται καθαρά στη γραμμή («FYTRO ΜΑΥΡΗ ΖΑΧΑΡΗ» -> ζάχαρη μαύρη,
+    // «ΜΠΟΥΚ.ΚΟΤ.ΦΙΛΕΤ IFANTIS» -> μπουκιές κοτόπουλο φιλέτο): κερδίζει, αν ταιριάζει σε περισσότερες λέξεις
+    if (br) {
+      const phrases = br.words.split(",").map(w => w.trim()).filter(Boolean);
+      const best = phrases.map(ph => ({ ph, sc: rawWordScore(ph, i.raw) })).sort((a, b) => b.sc - a.sc)[0];
+      if (best && best.sc >= 1 && best.sc > (m ? rawWordScore(m.name, i.raw) : 0)) {
+        const exact = cands.find(c => norm(c.name) === norm(best.ph));
+        m = exact || { name: cap(best.ph), cat: br.cat };
+      }
+    }
     if (br) {
       const heads = br.words.split(",").map(w => norm(w.trim()).split(" ")[0].slice(0, 5));
       const fits = c => c.cat === br.cat || heads.some(h => norm(c.name).includes(h));
@@ -1636,7 +1654,7 @@ function rcptReview() {
         <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
       <ul class="rcpt-items">${items.map((i, k) => `<li data-k="${k}">
         <input class="field" name="n${k}" value="${esc(i.name)}" aria-label="Όνομα" spellcheck="${SPELL}" title="${esc(i.raw)}" data-orig="${esc(i.orig || i.name)}" data-orig-cat="${i.origCat || i.cat}">
-        <div class="money sm"><input class="field num${total && i.price > total ? " bad" : ""}" name="p${k}" inputmode="decimal" value="${money(i.price)}" aria-label="Τιμή"><span>€</span></div>
+        <div class="money sm"><input class="field num${total && i.price > total ? " bad" : ""}" name="p${k}" inputmode="decimal" value="${i.price ? money(i.price) : ""}" placeholder="τιμή;" aria-label="Τιμή"><span>€</span></div>
         <button type="button" class="icon-btn" data-act="rcpt-del" aria-label="Αφαίρεση">${ic("trash")}</button>
         ${i.qty ? `<input type="hidden" name="q${k}" value="${esc(i.qty)}">` : ""}<input type="hidden" name="c${k}" value="${i.cat}">
       </li>`).join("")}</ul>
