@@ -1201,13 +1201,16 @@ function showReceipt(text, parsed) {
     const br = detectBrand(i.raw);
     // (με τις λέξεις της μάρκας μία-μία, πρώτα η πιο συνηθισμένη: «ΔΕΛΤΑ» -> γάλα πριν το γιαούρτι)
     // (αν η ίδια η γραμμή ταιριάζει σε προϊόν του διαδρόμου της μάρκας, π.χ. «MELISSA ΚΡΙΘ.» -> κριθαράκι, κερδίζει αυτό)
+    // αλλιώς «Μάρκα + τι πουλάει» (Viakal καθαριστικό αλάτων, Wettex σπογγοπετσέτες)
     let m = matchProduct(i.raw, cands);
-    if (br && (!m || m.cat !== br.cat)) { const inCat = cands.filter(c => c.cat === br.cat);
-      let bm = matchProduct(i.raw, inCat);
-      if (!bm) for (const w of br.words.split(",")) if ((bm = matchProduct(`${i.raw} ${w.trim()}`, inCat))) break;
-      m = bm || m; }
+    if (br && (!m || m.cat !== br.cat)) m = matchProduct(i.raw, cands.filter(c => c.cat === br.cat));
+    if (!m && br) {
+      const first = br.words.split(",")[0].trim(), exact = cands.find(c => c.cat === br.cat && norm(c.name) === norm(first));
+      if (exact) m = exact;
+      else return { name: `${brandLabel(br)} ${first}`, raw: i.raw, price: i.price, qty: i.qty, cat: br.cat };
+    }
     const name = m ? m.name : niceName(i.raw);
-    return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : br ? br.cat : guessCat(name) };
+    return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
   });
   // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
   const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
@@ -1237,14 +1240,14 @@ function rcptTargets(date, total) {
 const GR2LAT = [["μπ", "b"], ["ντ", "d"], ["γκ", "g"], ["γγ", "g"], ["ου", "u"], ["αι", "e"], ["ει", "i"], ["οι", "i"], ["υι", "i"],
   ["α", "a"], ["β", "v"], ["γ", "g"], ["δ", "d"], ["ε", "e"], ["ζ", "z"], ["η", "i"], ["θ", "th"], ["ι", "i"], ["κ", "k"], ["λ", "l"], ["μ", "m"], ["ν", "n"],
   ["ξ", "x"], ["ο", "o"], ["π", "p"], ["ρ", "r"], ["σ", "s"], ["ς", "s"], ["τ", "t"], ["υ", "i"], ["φ", "f"], ["χ", "h"], ["ψ", "ps"], ["ω", "o"]];
-function phon(w) {
+function phon(w, stem = true) {
   let x = norm(w);
   for (const [g, l] of GR2LAT) x = x.split(g).join(l);
   x = x.replace(/ph/g, "f").replace(/gh/g, "g").replace(/ch/g, "h").replace(/qu/g, "k").replace(/[cq]/g, "k").replace(/y/g, "i").replace(/w/g, "v")
     .replace(/tz|ts|zz/g, "z").replace(/(?<=[aeiou])h(?=[aeiou]|$)/g, "").replace(/(.)\1+/g, "$1");
-  return x.replace(/(es|as|os|is|us|on|ia|ie|io|a|e|i|o|u|s)$/, "") || x;
+  return stem ? x.replace(/(es|as|os|is|us|on|ia|ie|io|a|e|i|o|u|s)$/, "") || x : x;
 }
-const looseWords = t => String(t || "").split(/[^\p{L}]+/u).filter(w => w.length >= 3).map(phon).filter(w => w.length >= 3);
+const looseWords = t => String(t || "").split(/[^\p{L}]+/u).filter(w => w.length >= 3).map(w => phon(w)).filter(w => w.length >= 3);
 // prefix: μόνο για το κείμενο της απόδειξης (συντομογραφίες «ΜΟΤΣΑΡ.»), όχι για ολόκληρα ονόματα (λεμόνια ≠ λεμονάδα)
 function looseScore(text, name, prefix = false) {
   const rw = looseWords(text), iw = looseWords(name);
@@ -1267,10 +1270,10 @@ const BRAND_IDX = PRODUCT_BRANDS.map(([v, cat, words]) => ({ name: v.split("|")[
 function detectBrand(raw) {
   const toks = String(raw || "").split(/[\s.,/()-]+/).map(brandTok).filter(Boolean);
   if (!toks.length) return null;
-  const tp = toks.map(phon);
+  const tp = toks.map(t => phon(t, false)); // χωρίς κόψιμο κατάληξης: «λακτε» (Farine Lactée) ≠ «λακτα»
   // πόσο ταιριάζει η λέξη b της μάρκας με το κομμάτι i: ίδια = όλο το μήκος +2, συντομογραφία = όσα γράμματα γράφει
   const fit = (b, i, multi) => { const t = toks[i];
-    if (t === b || (b.length > 3 && phon(b) === tp[i])) return b.length + 2;
+    if (t === b || (b.length > 3 && phon(b, false) === tp[i])) return b.length + 2;
     if (b.length <= 3 || t.length < (multi ? 2 : 4)) return 0;
     if (b.startsWith(t)) return t.length;
     return t.startsWith(b) && t.length - b.length <= 3 ? b.length : 0; };
@@ -1290,6 +1293,10 @@ function detectBrand(raw) {
   }
   return best;
 }
+// όνομα μάρκας για εμφάνιση: η λατινική μορφή αν υπάρχει (Viakal), αλλιώς η ελληνική (Δελτα)
+const brandLabel = br => { const v = PRODUCT_BRANDS.find(b => b[0].split("|")[0] === br.name)[0].split("|");
+  const lat = v.find(x => /^[a-z0-9 &'.-]+$/i.test(x)) || v[0];
+  return lat.split(" ").map(w => w.charAt(0).toLocaleUpperCase("el") + w.slice(1)).join(" "); };
 const withBrand = raw => { const b = detectBrand(raw); return b ? `${raw} ${b.words.replace(/,/g, "")}` : raw; };
 // Ζευγάρια γραμμή απόδειξης -> προϊόν της λίστας: όλα τα πιθανά ζευγάρια με βαθμό, και κρατιούνται τα καλύτερα
 function pairRcpt(rows, listItems) {
