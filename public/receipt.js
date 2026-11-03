@@ -75,8 +75,8 @@ function fixPart(w) {
 }
 
 // Αριθμοί όπου το OCR έβαλε γράμματα: «Ί,59» -> «1,59», «-Ο,Ο5» -> «-0,05», «0,Θ9» -> «0,09»
-const fixNumber = t => /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,3}[%\d]?$/.test(t) && /\d/.test(t)
-  ? t.replace(/Θ/g, "6").replace(/[ΟοO]/g, "0").replace(/[ΊΙIl|]/g, "1") : t;
+const fixNumber = t => /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,4}[%\d]?$/.test(t) && /\d/.test(t)
+  ? t.replace(/([.,])[ΊΙ](?=[\dΟΘο]{2}$)/, "$1").replace(/Θ/g, "6").replace(/[ΟοO]/g, "0").replace(/[ΊΙIl|]/g, "1") : t;
 const num = s => {
   // τρίτο δεκαδικό = θόρυβος του OCR: «0,005» -> «0,05» (διπλό μηδέν), «1,535» -> «1,53»
   s = String(s).replace(/([.,])(\d)(\d)(\d)$/, (m, sep, a, b, c) => a === "0" && b === "0" ? sep + b + c : sep + a + b);
@@ -93,7 +93,7 @@ const keyOf = l => [...l].map(c => HOMO[c] || c).join("").replace(/(?<=[Α-Ω])0
 
 // Γραμμή προϊόντος: «ΟΝΟΜΑ τιμή [ΦΠΑ]». Από δεξιά παίρνει τα «αριθμητικά» κομμάτια:
 // αν είναι δύο, το τελευταίο είναι το ΦΠΑ (π.χ. «13.00%», που το OCR μπορεί να δει σαν «153.002») και η τιμή το προηγούμενο.
-const MONEY_TOK = /^-?[\dΊΙIlOΟ]{1,4}[.,]\d{2,3}[%\d]?$/;
+const MONEY_TOK = /^-?[\dΊΙIlOΟ]{1,4}[.,]\d{2,4}[%\d]?$/;
 function itemLine(l) {
   const toks = l.split(" ");
   const nums = [];
@@ -111,12 +111,15 @@ function itemLine(l) {
   if (nums.length === 1 && (/%$/.test(p) || /^\d{1,2}\.\d{2}\d?$/.test(p) && /^(6|13|24|4|9|17)\./.test(p))) return null;
   if (nums.length === 3) toks.push(nums[0]); // περισσευούμενο κομμάτι πάει στο όνομα
   const price = num(p.replace(/[%]$/, ""));
-  return price ? { name: toks.join(" "), price } : null;
+  // τιμή με τρία δεκαδικά: το OCR πρόσθεσε ένα ψηφίο, κρατάμε και τις άλλες εκδοχές για έλεγχο με το σύνολο
+  const d = p.match(/^(-?\d+)[.,](\d)(\d)(\d)$/);
+  const alts = d ? [+`${d[1]}.${d[2]}${d[3]}`, +`${d[1]}.${d[2]}${d[4]}`, +`${d[1]}.${d[3]}${d[4]}`] : null;
+  return price ? { name: toks.join(" "), price, alts } : null;
 }
 
 export function parseReceipt(text, opts = {}) {
   const raw = String(text || "").replace(/\r/g, "");
-  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
+  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter(Boolean);
   const low = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   // κατάστημα
@@ -150,14 +153,15 @@ export function parseReceipt(text, opts = {}) {
   const lastMoney = l => { const all = l.match(MONEY_G); return all ? num(all[all.length - 1]) : null; };
   let total = null;
   const totalCands = [];
-  const allMoney = l => (l.match(MONEY_G) || []).map(num).filter(n => n > 0);
+  const spaced = l => l.replace(/(\d{1,4}) (\d{2})(?=\s|$)/g, "$1,$2"); // «43 42» -> «43,42»
+  const allMoney = l => (spaced(l).match(MONEY_G) || []).map(num).filter(n => n > 0);
   for (let i = 0; i < lines.length; i++) {
     const k = keyOf(lines[i]);
     if (!/(^|[^α-ω])(γενικο )?[σζ]υν(ο[λα]ο|\.)|πληρωτε|(^|\s)total|συνολικο ποσο/.test(k) && !/(^|\s)total/i.test(lines[i])) continue;
     if (/υποσυν|συνολα|συνολο (φπα|τεμ|ειδ|εκπτ|ποσοτ)|τεμαχ|εξοικον/.test(k)) continue;
-    let t = lastMoney(lines[i]);
+    let t = lastMoney(spaced(lines[i]));
     totalCands.push(...allMoney(lines[i]));
-    if (t == null && lines[i + 1] && !/[α-ω]{3}/.test(keyOf(lines[i + 1]))) { t = lastMoney(lines[i + 1]); totalCands.push(...allMoney(lines[i + 1])); }
+    if (t == null && lines[i + 1] && !/[α-ω]{3}/.test(keyOf(lines[i + 1]))) { t = lastMoney(spaced(lines[i + 1])); totalCands.push(...allMoney(lines[i + 1])); }
     if (total == null && t > 0) total = t;
   }
   for (const l of lines) if (/καρτ|μετρητ|πληρωμ|ποσο|amount|visa|mastercard/.test(keyOf(l)) || /amount/i.test(l)) totalCands.push(...allMoney(l));
@@ -196,7 +200,8 @@ export function parseReceipt(text, opts = {}) {
     let name = m.name.replace(/\s*\.\s*/g, ".").trim();
     if (price == null || price <= 0 || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
-    items.push({ raw: name, price, qty: "" });
+    if (m.alts) m.alts.cur = price;
+    items.push({ raw: name, price, qty: "", alts: m.alts });
   }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
@@ -214,6 +219,23 @@ export function parseReceipt(text, opts = {}) {
       if (!far(best)) total = best;
     }
   }
+  // Αν το άθροισμα δεν ταιριάζει με το σύνολο, δοκιμάζει τις άλλες εκδοχές των αμφίβολων τιμών
+  if (total) {
+    const diffNow = () => Math.round((items.reduce((a, i) => a + i.price, 0) - total) * 100) / 100;
+    for (const it of items) {
+      if (!it.alts || !diffNow()) continue;
+      const base = it.price;
+      let best = base, bestD = Math.abs(diffNow());
+      for (const a of it.alts) {
+        it.price = Math.round((base + (a - it.alts.cur)) * 100) / 100;
+        const dd = Math.abs(diffNow());
+        if (dd < 0.005 && dd < bestD) { best = it.price; bestD = dd; } // μόνο αν βγαίνει ακριβώς το σύνολο
+        it.price = base;
+      }
+      it.price = best;
+    }
+  }
+  items.forEach(i => { delete i.alts; delete i.base0; });
   return { store, date, total, items };
 }
 
