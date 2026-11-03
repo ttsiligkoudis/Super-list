@@ -1326,14 +1326,14 @@ function htmlToText(html) {
   walk(d.documentElement);
   return out.join("\n");
 }
-let rcptExact = false, rcptQrUrl = "", rcptQrWhy = "";
+let rcptExact = false, rcptQrUrl = "", rcptQrWhy = "", rcptQrHuman = false;
 // Διαβάζει την ψηφιακή απόδειξη από τον σύνδεσμο. true αν βγήκαν προϊόντα.
 async function readReceiptDoc(url, say) {
   rcptQrUrl = url;
   if (!session) return false;
   say("Βρήκα το QR, φέρνω την ψηφιακή απόδειξη…", 0.3);
   try {
-    rcptQrWhy = "";
+    rcptQrWhy = ""; rcptQrHuman = false;
     const r = await fetch("/api/receipt-doc?u=" + encodeURIComponent(url), { headers: authH() });
     if (!r.ok) { let e = ""; try { e = (await r.json()).error; } catch { /* */ } rcptQrWhy = e || `Σφάλμα ${r.status}`; return false; }
     const body = await r.text();
@@ -1344,6 +1344,7 @@ async function readReceiptDoc(url, say) {
       const title = (body.match(/<title[^>]*>([^<]*)/i) || [])[1] || "";
       const scripts = [...body.matchAll(/<script[^>]+src=["']([^"']+)/gi)].map(m => m[1]).slice(0, 6);
       const apis = [...new Set([...body.matchAll(/["'](\/?[\w\/.-]*api[\w\/.-]*)["']/gi)].map(m => m[1]))].slice(0, 6);
+      if (/challenges\.cloudflare\.com\/turnstile|_framework\/blazor/i.test(body)) rcptQrHuman = true;
       rcptQrWhy = [`Τελική διεύθυνση: ${r.headers.get("x-final-url") || url}`, `Τύπος: ${r.headers.get("content-type") || "?"}, ${body.length} χαρακτήρες`,
         title && `Τίτλος: ${title.trim()}`, scripts.length && `Scripts: ${scripts.join(", ")}`, apis.length && `API: ${apis.join(", ")}`,
         `Templates: ${(body.match(/<template/gi) || []).length}, πίνακες: ${(body.match(/<table/gi) || []).length}, «Περιγραφή» στο κείμενο: ${/περιγραφ/i.test(text) ? "ναι" : "όχι"}`,
@@ -1737,7 +1738,7 @@ function rcptReview() {
         <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
       ${rcptShots.length ? `<label class="btn ghost wide rcpt-more">${ic("camera")}Πρόσθεσε κι άλλη φωτογραφία${rcptShots.length > 1 ? ` <span class="muted">· ${rcptShots.length}</span>` : ""}<input type="file" accept="image/*" id="rcptMore" multiple hidden></label>` : ""}
-      ${rcptExact ? `<p class="rcpt-note"><span class="rcpt-ok">${ic("check")}Από την ψηφιακή απόδειξη (QR): ακριβή προϊόντα και ποσά</span></p>` : rcptQrUrl ? `<p class="small muted">Βρήκα το QR αλλά η σελίδα του δεν έδωσε τα προϊόντα. <a href="${esc(rcptQrUrl)}" target="_blank" rel="noopener">Άνοιξέ την</a>, αντέγραψε όλη τη σελίδα και επικόλλησέ τη στο «επικόλλησε το κείμενο».</p>
+      ${rcptExact ? `<p class="rcpt-note"><span class="rcpt-ok">${ic("check")}Από την ψηφιακή απόδειξη (QR): ακριβή προϊόντα και ποσά</span></p>` : rcptQrUrl ? `<p class="small muted">${rcptQrHuman ? "Βρήκα το QR. Η σελίδα του παρόχου δείχνει τα προϊόντα μόνο σε άνθρωπο (έλεγχος ασφαλείας), οπότε τα παρακάτω είναι από την ανάγνωση της φωτογραφίας. Για ακριβή ποσά:" : "Βρήκα το QR αλλά η σελίδα του δεν έδωσε τα προϊόντα. Για ακριβή ποσά:"} <a href="${esc(rcptQrUrl)}" target="_blank" rel="noopener">άνοιξέ την</a>, πάτα «Επιλογή όλων» και «Αντιγραφή», γύρνα εδώ και επικόλλησέ τη στο «Το κείμενο που διαβάστηκε» → «Ανάγνωση ξανά».</p>
         ${rcptQrWhy ? `<details class="rcpt-paste"><summary>Τι απάντησε η σελίδα</summary><pre class="small muted" style="white-space:pre-wrap;word-break:break-all">${esc(rcptQrWhy)}</pre></details>` : ""}` : ""}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
