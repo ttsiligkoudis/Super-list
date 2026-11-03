@@ -148,14 +148,18 @@ export function parseReceipt(text, opts = {}) {
   const MONEY_G = new RegExp(MONEY.replace("-?", ""), "g");
   const lastMoney = l => { const all = l.match(MONEY_G); return all ? num(all[all.length - 1]) : null; };
   let total = null;
-  for (let i = 0; i < lines.length && total == null; i++) {
+  const totalCands = [];
+  const allMoney = l => (l.match(MONEY_G) || []).map(num).filter(n => n > 0);
+  for (let i = 0; i < lines.length; i++) {
     const k = keyOf(lines[i]);
     if (!/(^|[^α-ω])(γενικο )?[σζ]υν(ο[λα]ο|\.)|πληρωτε|(^|\s)total|συνολικο ποσο/.test(k) && !/(^|\s)total/i.test(lines[i])) continue;
     if (/υποσυν|συνολα|συνολο (φπα|τεμ|ειδ|εκπτ|ποσοτ)|τεμαχ|εξοικον/.test(k)) continue;
-    total = lastMoney(lines[i]);
-    if (total == null && lines[i + 1] && !/[α-ω]{3}/.test(keyOf(lines[i + 1]))) total = lastMoney(lines[i + 1]);
-    if (total != null && total <= 0) total = null;
+    let t = lastMoney(lines[i]);
+    totalCands.push(...allMoney(lines[i]));
+    if (t == null && lines[i + 1] && !/[α-ω]{3}/.test(keyOf(lines[i + 1]))) { t = lastMoney(lines[i + 1]); totalCands.push(...allMoney(lines[i + 1])); }
+    if (total == null && t > 0) total = t;
   }
+  for (const l of lines) if (/καρτ|μετρητ|πληρωμ|ποσο|amount|visa|mastercard/.test(keyOf(l)) || /amount/i.test(l)) totalCands.push(...allMoney(l));
   // αλλιώς το ποσό της πληρωμής (κάρτα, μετρητά, AMOUNT)
   if (total == null) {
     const pays = lines.filter(l => /καρτ|μετρητ|πληρωμ|ποσο|amount|visa|mastercard/.test(keyOf(l)) || /amount/i.test(l)).map(lastMoney).filter(n => n > 0);
@@ -164,7 +168,11 @@ export function parseReceipt(text, opts = {}) {
 
   // προϊόντα: «ΟΝΟΜΑ ποσό [ΦΠΑ%]» μέχρι το σύνολο
   const items = [];
-  for (const l of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    let l = lines[li].replace(/[.,;:'’]+(?=\s|$)/g, m => /\d$/.test(m) ? m : "");
+    // το OCR χώρισε το όνομα από την τιμή σε δύο γραμμές
+    const nx = lines[li + 1];
+    if (nx && !itemLine(l) && /[Α-ΩA-Z]{3}/.test(l) && !/[A-Za-zΑ-Ωα-ω]/.test(nx) && itemLine("Χ " + nx)) { l = l + " " + nx; li++; }
     const n = l.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
     if (/^(γενικο )?[σζ]υνο[λα]ο(?! (φπα|τεμ|ειδ))|^πληρωτε|^total/.test(keyOf(l)) && items.length) break;
     if (DISCOUNT.test(n) || /lidl plus|\[141|εκπτωση/.test(n)) {
@@ -188,6 +196,16 @@ export function parseReceipt(text, opts = {}) {
     if (price == null || price <= 0 || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     items.push({ raw: name, price, qty: "" });
+  }
+  // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
+  // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
+  const sum = items.reduce((a, i) => a + i.price, 0);
+  if (sum > 0 && totalCands.length) {
+    const far = t => t == null || Math.abs(t - sum) > Math.max(1, sum * 0.1);
+    if (far(total)) {
+      const best = totalCands.reduce((a, b) => Math.abs(b - sum) < Math.abs(a - sum) ? b : a);
+      if (!far(best)) total = best;
+    }
   }
   return { store, date, total, items };
 }
@@ -215,11 +233,12 @@ export function matchProduct(rawName, candidates) {
     if (!words.length) continue;
     const head = words[0];
     const headTok = strong.find(t => near(head, t) || (t.length >= 5 && t.startsWith(head) && head.length >= 4));
-    if (!headTok) continue;
     const hit = t => words.some(w => near(w, t) || (t.length >= 5 && t.startsWith(w) && w.length >= 4));
     const hs = strong.filter(hit).length, sh = short.filter(t => words.slice(1).some(w => w.startsWith(t))).length;
-    // πόσο σίγουρο: περισσότερα κοινά κομμάτια, μετά μεγαλύτερο κομμάτι στο «τι είναι», μετά πιο σύντομο όνομα
-    const score = hs + sh * 0.3 + Math.min(headTok.length, 8) * 0.02 - words.length * 0.01 - head.length * 0.001;
+    if (!hs) continue;
+    // πόσο σίγουρο: περισσότερα κοινά κομμάτια, μετά μεγαλύτερο κομμάτι στο «τι είναι», μετά πιο σύντομο όνομα.
+    // Χωρίς ταίριασμα στο «τι είναι» (π.χ. «ΣΤΡ» -> «Γιαούρτι στραγγιστό») μετράει πολύ λιγότερο.
+    const score = (headTok ? 10 : 0) + hs + sh * 0.3 + (headTok ? Math.min(headTok.length, 8) * 0.02 : 0) - words.length * 0.01 - head.length * 0.001;
     if (!best || score > best.score) best = { ...c, score };
   }
   return best;
@@ -227,6 +246,9 @@ export function matchProduct(rawName, candidates) {
 
 // Τίτλος από κεφαλαία απόδειξης: «ΓΛΥΚΟΠΑΤΑΤΕΣ 500G» -> «Γλυκοπατατες 500G»
 export function niceName(raw) {
+  // μόνο τα κομμάτια με γράμματα: «ΦΑ.ΚΟ.ΣΤΡ.10%3X200G» -> «Φα. κο. στρ.»
+  const txt = raw.split(/(?<=\.)|\s+/).filter(p => p && !/\d/.test(p) && /[A-Za-zΑ-Ωα-ω]{2}/.test(p)).join(" ");
+  raw = txt || raw;
   const s = raw.replace(/\.+/g, ".").replace(/\.(?=\S)/g, ". ").replace(/\s+/g, " ").trim();
   const lower = s.toLocaleLowerCase("el").replace(/(\d)\s*(g|gr|kg|ml|l|cl)\b/gi, (m, d, u) => d + u.toUpperCase());
   return lower.charAt(0).toLocaleUpperCase("el") + lower.slice(1).replace(/σ(?=\s|$|\.)/g, "ς");
