@@ -2250,7 +2250,7 @@ function recipesView() {
       <span class="rcp-img">${recipeThumb(r)}</span>
       <span class="rcp-body"><span class="rcp-c" style="--h:${(RCAT[r.c] || RCAT.other).hue}">${esc((RCAT[r.c] || RCAT.other).name)}</span>
         <span class="rcp-t">${esc(r.t)}</span><span class="rcp-m">${recipeMeta(r)}</span>
-        ${session && r.by === session.uid ? `<span class="rcp-mine">Δική σου</span>` : ""}</span></button>`).join("")}</div>
+        ${r.a ? `<span class="rcp-pick">${ic("check")}Προτεινόμενη</span>` : session && r.by === session.uid ? `<span class="rcp-mine">Δική σου</span>` : ""}</span></button>`).join("")}</div>
     <p class="empty rcp-none" ${shown.length ? "hidden" : ""}>${recipes.length ? "Δεν βρέθηκε συνταγή." : navigator.onLine ? "Δεν υπάρχουν συνταγές ακόμα. Γίνε ο πρώτος που θα ανεβάσει μία!" : "Οι συνταγές θέλουν σύνδεση στο internet."}</p>`;
 }
 

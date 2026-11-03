@@ -186,9 +186,24 @@ const clip = (v, n) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 const numIn = (v, lo, hi) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
 async function readIndex(env) { try { const v = JSON.parse((await env.DATA.get("recipes")) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
 const isAdmin = (env, s) => String(env.ADMINS || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean).includes(s.email);
-const summary = r => ({ id: r.id, t: r.title, c: r.cat, k: r.kcal, m: r.time, d: r.diff, s: r.servings, by: r.by, u: r.u, img: r.img || 0,
+const summary = r => ({ id: r.id, a: r.admin ? 1 : 0, t: r.title, c: r.cat, k: r.kcal, m: r.time, d: r.diff, s: r.servings, by: r.by, u: r.u, img: r.img || 0,
   q: r.ingredients.map(x => x.toLowerCase()).join(" · ").slice(0, 400) });
 
+// Οι συνταγές των διαχειριστών (ADMINS) έρχονται πρώτες. Όταν ένας διαχειριστής ανοίγει τη λίστα,
+// σημειώνονται και όσες είχε ανεβάσει πριν γίνει διαχειριστής (μία φορά).
+async function listRecipes(env, s) {
+  const idx = await readIndex(env);
+  if (isAdmin(env, s)) {
+    const mine = idx.filter(x => x.by === s.uid && !x.a);
+    for (const x of mine) {
+      const r = await getRecipe(env, x.id);
+      if (r) { r.admin = true; await env.DATA.put(`recipe:${r.id}`, JSON.stringify(r)); }
+      x.a = 1;
+    }
+    if (mine.length) await env.DATA.put("recipes", JSON.stringify(idx));
+  }
+  return json(idx.filter(x => x.a).concat(idx.filter(x => !x.a)));
+}
 async function getRecipe(env, id) {
   const raw = await env.DATA.get(`recipe:${id}`);
   return raw ? JSON.parse(raw) : null;
@@ -211,7 +226,7 @@ async function saveRecipe(request, env, s) {
   const now = Date.now();
   const r = { id: old ? old.id : randHex(8), title, cat: RCATS.has(data.cat) ? data.cat : "other",
     kcal: numIn(data.kcal, 0, 5000), time: numIn(data.time, 0, 1440), diff: numIn(data.diff, 1, 3), servings: numIn(data.servings, 1, 50),
-    ingredients, steps, by: old ? old.by : s.uid, img: old && !data.noImg ? old.img || 0 : 0, createdAt: old ? old.createdAt : now, u: now };
+    ingredients, steps, by: old ? old.by : s.uid, admin: old ? (old.by === s.uid ? isAdmin(env, s) : !!old.admin) : isAdmin(env, s), img: old && !data.noImg ? old.img || 0 : 0, createdAt: old ? old.createdAt : now, u: now };
   await env.DATA.put(`recipe:${r.id}`, JSON.stringify(r));
   const idx = (await readIndex(env)).filter(x => x.id !== r.id);
   idx.unshift(summary(r));
@@ -272,7 +287,7 @@ export default {
       if (sub === "img" && request.method === "GET") return getImage(env, id);
       const s = await auth(request, env);
       if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
-      if (!id && request.method === "GET") return json(await env.DATA.get("recipes") || "[]");
+      if (!id && request.method === "GET") return listRecipes(env, s);
       if (!id && post) return saveRecipe(request, env, s);
       if (id && !sub && request.method === "GET") { const r = await getRecipe(env, id); return r ? json(r) : fail(404, "Η συνταγή δεν βρέθηκε."); }
       if (id && sub === "delete" && post) return deleteRecipe(env, s, id);

@@ -16,5 +16,8 @@
   // αυτόματα το KV namespace στο πρώτο deploy και το συνδέει με το Worker.
   "kv_namespaces": [
     { "binding": "DATA" }
-  ]
+  ],
+  // Οι μεταβλητές (π.χ. ADMINS) ορίζονται στο Cloudflare → Settings → Variables and Secrets
+  // και δεν γράφονται εδώ, για να μη φαίνονται email στο repo. Το keep_vars τις κρατάει σε κάθε deploy.
+  "keep_vars": true
 }

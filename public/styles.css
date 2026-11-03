@@ -625,3 +625,5 @@ body.is-dragging .day input{pointer-events:none}
 .split-btns{display:flex;gap:8px}
 .split-btns .btn{cursor:pointer}
 .split-btns .btn[hidden]{display:none}
+.rcp-pick{display:inline-flex;align-items:center;gap:3px;font-size:.72rem;color:var(--basil);font-weight:700}
+.rcp-pick .ic{width:13px;height:13px}
