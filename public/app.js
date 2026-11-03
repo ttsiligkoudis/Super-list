@@ -1121,22 +1121,24 @@ function ocrLatinReady() {
   }).catch(e => { ocrLatin = null; throw e; });
   return ocrLatin;
 }
-// Ξαναδιαβάζει με αγγλικά μόνο τις γραμμές των προϊόντων, για τα ονόματα με λατινικά
+// Ξαναδιαβάζει με αγγλικά τις γραμμές προϊόντων με αβέβαιες λέξεις (πιθανά λατινικά), όλες μαζί σε ένα πέρασμα
 async function latinNames(img, data, r, say) {
-  if (!r.items.length) return;
+  const lines = r.items.map(it => data.lines[it.line]).filter(L => L && L.words && L.words.length);
+  const doubt = r.items.filter(it => { const L = data.lines[it.line]; return L && L.words && L.words.some(w => /[^\d\s.,%]{2}/.test(w.text) && w.confidence < 85); });
+  if (!doubt.length || !lines.length) return;
+  say("Διαβάζω τα ονόματα των προϊόντων…", 0.88);
   let e;
   try { e = await ocrLatinReady(); } catch { return; }
-  let k = 0;
-  for (const it of r.items) {
-    say("Διαβάζω τα ονόματα των προϊόντων…", 0.85 + 0.15 * (k++ / r.items.length));
-    const L = data.lines[it.line];
-    if (!L || !L.words || !L.words.length) continue;
-    const b = L.bbox;
-    try {
-      const { data: d } = await e.recognize(img, { rectangle: { left: b.x0, top: Math.max(0, b.y0 - 3), width: b.x1 - b.x0, height: b.y1 - b.y0 + 6 } });
-      const m = mergeLatin(L.words, d.words || []);
-      if (m && /[A-Za-zΑ-Ωα-ω]{2}/.test(m)) it.raw = m;
-    } catch {}
+  const bs = doubt.map(it => data.lines[it.line].bbox);
+  const x0 = Math.min(...bs.map(b => b.x0)), y0 = Math.max(0, Math.min(...bs.map(b => b.y0)) - 4);
+  const x1 = Math.max(...bs.map(b => b.x1)), y1 = Math.max(...bs.map(b => b.y1)) + 4;
+  let words;
+  try { ({ data: { words } } = await e.recognize(img, { rectangle: { left: x0, top: y0, width: x1 - x0, height: y1 - y0 } })); } catch { return; }
+  for (const it of doubt) {
+    const L = data.lines[it.line], b = L.bbox;
+    const mine = (words || []).filter(w => { const c = (w.bbox.y0 + w.bbox.y1) / 2; return c >= b.y0 && c <= b.y1; });
+    const m = mergeLatin(L.words, mine);
+    if (m && /[A-Za-zΑ-Ωα-ω]{2}/.test(m)) it.raw = m;
   }
 }
 // Γκρι και σε μέγεθος που διαβάζει καλά το OCR (οι μικρές φωτογραφίες μεγαλώνουν, οι τεράστιες μικραίνουν)
@@ -1185,7 +1187,10 @@ function showReceipt(text, parsed) {
   const known = knownProducts();
   const cands = [...BPROD.values()].map(p => ({ name: p.name, cat: p.c }))
     .concat([...known.values()].map(i => ({ name: i.name, cat: catOf(i) })));
+  const aliases = doc.aliases || {};
   const items = r.items.map(i => {
+    const a = aliases[aliasKey(i.raw)];
+    if (a && a.t && !a.deleted) return { name: a.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[a.c] ? a.c : guessCat(a.t) };
     const m = matchProduct(i.raw, cands);
     const name = m ? m.name : niceName(i.raw);
     return { name, raw: i.raw, price: i.price, qty: i.qty, cat: m ? m.cat : guessCat(name) };
@@ -1193,34 +1198,55 @@ function showReceipt(text, parsed) {
   // κατάστημα: υπάρχον της ίδιας αλυσίδας ή νέο
   const ex = r.store ? stores().find(s => { const b = brandOf(s); return b && b.id === r.store; }) : null;
   const t = r.date ? new Date(r.date.y, r.date.m - 1, r.date.d) : new Date();
+  // αν υπάρχει λίστα του ιστορικού για αυτά τα ψώνια, τα ονόματα παίρνονται από εκεί
+  const tg = rcptTargets(t, r.total)[0];
+  if (tg) {
+    const pairs = pairRcpt(items.map((i, k) => ({ k: String(k), name: i.name, raw: i.raw })), itemsOf(tg.l.id));
+    for (const [k, it] of pairs) { items[+k].name = it.name; items[+k].cat = catOf(it); }
+  }
   rcpt = { text, items, store: ex ? ex.id : "", brand: !ex && r.store ? BRAND[r.store] : null, total: r.total, date: t, gotDate: !!r.date };
   openSheet(rcptReview());
   rcptPairHint();
 }
-// Λίστες του ιστορικού που μπορεί να είναι τα ίδια ψώνια: κλεισμένες λίγο πριν ή μετά την ημερομηνία της απόδειξης
-function rcptTargets(date) {
+// Λίστες του ιστορικού που μπορεί να είναι τα ίδια ψώνια: πρώτα όσες έχουν το ίδιο ποσό,
+// μετά όσες έκλεισαν λίγο πριν ή μετά την ημερομηνία της απόδειξης
+function rcptTargets(date, total) {
   const t = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(), day = 864e5;
-  return closedLists().filter(l => !l.receipt && l.closedAt >= t - day && l.closedAt < t + 5 * day)
-    .sort((a, b) => Math.abs(a.closedAt - t - day / 2) - Math.abs(b.closedAt - t - day / 2)).slice(0, 3);
+  return closedLists().filter(l => !l.receipt)
+    .map(l => ({ l, same: !!(total && l.amount && Math.abs(l.amount - total) < 0.01), dist: Math.abs(l.closedAt - t - day / 2) }))
+    .filter(x => (x.l.closedAt >= t - day && x.l.closedAt < t + 5 * day) || (x.same && x.dist < 30 * day))
+    .sort((a, b) => (b.same - a.same) || a.dist - b.dist).slice(0, 3);
 }
-// Ζευγάρια: γραμμή απόδειξης -> προϊόν της λίστας (πρώτα ίδιο όνομα, μετά με τις λέξεις)
+// Ζευγάρια γραμμή απόδειξης -> προϊόν της λίστας: όλα τα πιθανά ζευγάρια με βαθμό, και κρατιούνται τα καλύτερα
 function pairRcpt(rows, listItems) {
-  const free = new Map(listItems.map(i => [i.id, i]));
-  const out = new Map();
-  for (const r of rows) {
-    const hit = [...free.values()].find(i => norm(i.name) === norm(r.name));
-    if (hit) { out.set(r.k, hit); free.delete(hit.id); }
+  const cand = [];
+  // βαθμός: το κείμενο της απόδειξης μετράει πρώτο (π.χ. «ΛΕΜΟΝΙΑ» και όχι «ΚΛΙΝ...ΛΕΜ» για τα Λεμόνια),
+  // μετά το όνομα. Αν ο χρήστης άλλαξε το όνομα, μετράει μόνο αυτό.
+  for (const r of rows) for (const it of listItems) {
+    const c = [{ name: it.name, id: it.id }];
+    const exact = !!r.name && norm(it.name) === norm(r.name);
+    const ns = r.name ? matchProduct(r.name, c) : null, rs = r.raw && !r.edited ? matchProduct(r.raw, c) : null;
+    if (!exact && !ns && !rs) continue;
+    cand.push({ r, it, sc: (exact ? 30 : 0) + (rs ? rs.score : 0) + (ns ? ns.score * 0.5 : 0) });
   }
-  for (const r of rows) {
-    if (out.has(r.k) || !free.size) continue;
-    const cands = [...free.values()].map(i => ({ name: i.name, id: i.id }));
-    const m = matchProduct(r.name, cands) || (r.raw ? matchProduct(r.raw, cands) : null);
-    if (m) { out.set(r.k, free.get(m.id)); free.delete(m.id); }
-  }
+  cand.sort((x, y) => y.sc - x.sc);
+  const out = new Map(), used = new Set();
+  for (const { r, it } of cand) if (!out.has(r.k) && !used.has(it.id)) { out.set(r.k, it); used.add(it.id); }
   return out;
 }
-const rcptRows = (root = document) => [...root.querySelectorAll(".rcpt-items li")].map(li => ({
-  k: li.dataset.k, li, name: li.querySelector('[name^="n"]').value.trim(), raw: li.querySelector('[name^="n"]').title }));
+// Κλειδί για να θυμάται τις συντομογραφίες: μόνο τα κομμάτια με γράμματα, χωρίς τόνους
+const aliasKey = raw => norm(String(raw || "").split(/[\s.]+/).filter(p => p && !/\d/.test(p) && /\p{L}{2}/u.test(p)).join(" "));
+function rememberAlias(raw, name, cat) {
+  const k = aliasKey(raw);
+  if (!k || !name || k.length < 3) return;
+  doc.aliases = doc.aliases || {};
+  const cur = doc.aliases[k];
+  if (cur && cur.t === name && cur.c === cat) return;
+  if (!cur && norm(name) === norm(niceName(raw))) return; // τίποτα να θυμηθεί
+  doc.aliases[k] = touch({ t: name, c: cat });
+}
+const rcptRows = (root = document) => [...root.querySelectorAll(".rcpt-items li")].map(li => { const f = li.querySelector('[name^="n"]');
+  return { k: li.dataset.k, li, name: f.value.trim(), raw: f.title, edited: f.value !== f.defaultValue }; });
 function rcptPairHint() {
   const el = $("#rcptPair"), sel = $('input[name="target"]:checked');
   if (!el) return;
@@ -1238,7 +1264,7 @@ function rcptPairHint() {
 }
 function rcptReview() {
   const { items, total, date, store, brand, gotDate } = rcpt;
-  const targets = rcptTargets(date);
+  const targets = rcptTargets(date, total);
   const note = (ok, what) => ok ? `<span class="rcpt-ok">${ic("check")}από την απόδειξη</span>` : `<span class="rcpt-miss">δεν βρέθηκε${what}, έλεγξέ το</span>`;
   const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const sum = items.reduce((a, i) => a + i.price, 0);
@@ -1249,8 +1275,8 @@ function rcptReview() {
     <form data-form="rcpt-save" autocomplete="off" class="rcpt">
       <label class="fld"><span class="fld-row">Ημερομηνία ${note(gotDate, ", μπήκε η σημερινή")}</span><input class="field" type="date" name="date" value="${iso}" required></label>
       ${targets.length ? `<div class="pay rcpt-target"><span class="pay-l">Είναι ψώνια που έχεις ήδη στο ιστορικό;</span>
-        <div class="radios">${targets.map((l, i) => { const d = new Date(l.closedAt), n = itemsOf(l.id).length;
-          return `<label><input type="radio" name="target" value="${l.id}"${i ? "" : " checked"}><span>${esc(l.name)} <span class="muted">${d.getDate()}/${d.getMonth() + 1}${n ? ` · ${n} προϊόντα` : ""}</span></span></label>`; }).join("")}
+        <div class="radios">${targets.map(({ l, same }, i) => { const d = new Date(l.closedAt), n = itemsOf(l.id).length;
+          return `<label><input type="radio" name="target" value="${l.id}"${i ? "" : " checked"}><span>${esc(l.name)} <span class="muted">${d.getDate()}/${d.getMonth() + 1}${n ? ` · ${n} προϊόντα` : ""}${same ? " · ίδιο ποσό" : ""}</span></span></label>`; }).join("")}
           <label><input type="radio" name="target" value=""><span>Όχι, νέα λίστα</span></label></div>
         <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
@@ -1304,8 +1330,9 @@ function saveReceipt(f, v) {
   for (const li of f.querySelectorAll(".rcpt-items li")) {
     const k = li.dataset.k, name = (v["n" + k] || "").trim();
     if (!name) continue;
-    doc.items.push(touch({ id: uid(), listId: l.id, name, qty: v["q" + k] || "", cat: CAT[v["c" + k]] ? v["c" + k] : guessCat(name),
-      store, done: true, order: n++, price: parseAmount(v["p" + k]) || undefined }));
+    const cat = CAT[v["c" + k]] ? v["c" + k] : guessCat(name);
+    doc.items.push(touch({ id: uid(), listId: l.id, name, qty: v["q" + k] || "", cat, store, done: true, order: n++, price: parseAmount(v["p" + k]) || undefined }));
+    rememberAlias(li.querySelector('[name^="n"]').title, name, cat);
   }
   rcpt = null;
   ui.histView = "lists"; ui.histOpen = l.id; saveUi();
@@ -1327,6 +1354,7 @@ function saveReceiptInto(f, v, l, amount, store) {
   for (const r of rows) {
     const price = parseAmount(v["p" + r.k]) || undefined, it = pairs.get(r.k);
     if (it) {
+      rememberAlias(r.raw, it.name, catOf(it));
       it.price = price; it.done = true;
       if (store && !it.store) it.store = store;
       touch(it);
@@ -1334,6 +1362,7 @@ function saveReceiptInto(f, v, l, amount, store) {
       const ni = touch({ id: uid(), listId: l.id, name: r.name, qty: v["q" + r.k] || "", cat: CAT[v["c" + r.k]] ? v["c" + r.k] : guessCat(r.name),
         store, done: true, order: order++, price });
       doc.items.push(ni); added.push(ni);
+      rememberAlias(r.raw, ni.name, ni.cat);
     }
   }
   if (amount) { l.amount = amount; l.payStore = store || l.payStore || ""; }

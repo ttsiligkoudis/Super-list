@@ -78,8 +78,12 @@ function fixPart(w) {
 }
 
 // Αριθμοί όπου το OCR έβαλε γράμματα: «Ί,59» -> «1,59», «-Ο,Ο5» -> «-0,05», «0,Θ9» -> «0,09»
-const fixNumber = t => /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,4}[%\d]?$/.test(t) && /\d|^-/.test(t)
+const fixNumber = t0 => {
+  // στις εκπτώσεις («-Ο,δ88») τα γράμματα μετά την υποδιαστολή είναι θόρυβος
+  const t = /^-[^\s]*[.,]/.test(t0) ? t0.replace(/(?<=[.,].*)[^\dΟΘοΊΙO]/g, "") : t0;
+  return /^-?[\dΟΘοΊΙIlO|]{1,4}[.,][\dΟΘοΊΙO]{2,4}[%\d]?$/.test(t) && /\d|^-/.test(t)
   ? t.replace(/([.,])[ΊΙ](?=[\dΟΘο]{2}$)/, "$1").replace(/Θ/g, "6").replace(/[ΟοO]/g, "0").replace(/[ΊΙIl|]/g, "1") : t;
+};
 const num = s => {
   // τρίτο δεκαδικό = θόρυβος του OCR: «0,005» -> «0,05» (διπλό μηδέν), «1,535» -> «1,53»
   s = String(s).replace(/([.,])(\d)(\d)(\d)$/, (m, sep, a, b, c) => a === "0" && b === "0" ? sep + b + c : sep + a + b);
@@ -103,7 +107,10 @@ function itemLine(l) {
   let junk = 0;
   while (toks.length > 1) {
     const t = toks[toks.length - 1].replace(/^[^\d\-ΊΙΟO]{1,2}(?=\d)/, "").replace(/(\d)[^\d%]{1,2}$/, "$1");
-    if (MONEY_TOK.test(t) || /^\d{1,2}[.,]?\d{0,2}%$/.test(t)) { nums.unshift(t); toks.pop(); }
+    const t0 = toks[toks.length - 1];
+    // τιμή με δυσανάγνωστο πρώτο ψηφίο («ἂ,25»): συμπληρώνεται μετά από το σύνολο
+    if (nums.length && /^[^\d\s\-][.,]\d{2}$/.test(t0)) { nums.unshift("?" + t0.slice(1)); toks.pop(); }
+    else if (MONEY_TOK.test(t) || /^\d{1,2}[.,]?\d{0,2}%$/.test(t)) { nums.unshift(t); toks.pop(); }
     else if ((/^[A-EΑ-Ε*%]$/.test(t) || /^[^A-Za-zΑ-Ωα-ω]{1,2}$/.test(t)) && junk++ < 2) toks.pop();
     else break;
     if (nums.length === 3) break;
@@ -113,6 +120,7 @@ function itemLine(l) {
   // μόνο ποσοστό ΦΠΑ, χωρίς τιμή
   if (nums.length === 1 && (/%$/.test(p) || /^\d{1,2}\.\d{2}\d?$/.test(p) && /^(6|13|24|4|9|17)\./.test(p))) return null;
   if (nums.length === 3) toks.push(nums[0]); // περισσευούμενο κομμάτι πάει στο όνομα
+  if (p[0] === "?") return { name: toks.join(" "), price: 0, unknown: p.slice(2) };
   const price = num(p.replace(/[%]$/, ""));
   // τιμή με τρία δεκαδικά: το OCR πρόσθεσε ένα ψηφίο, κρατάμε και τις άλλες εκδοχές για έλεγχο με το σύνολο
   const d = p.match(/^(-?\d+)[.,](\d)(\d)(\d)$/);
@@ -204,10 +212,10 @@ export function parseReceipt(text, opts = {}) {
     if (!m) continue;
     const price = m.price;
     let name = m.name.replace(/\s*\.\s*/g, ".").trim();
-    if (price == null || price <= 0 || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
+    if (price == null || (price <= 0 && !m.unknown) || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     if (m.alts) m.alts.cur = price;
-    items.push({ raw: name, price, qty: "", alts: m.alts, line: src });
+    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown });
   }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
   // παίρνει το ποσό συνόλου/πληρωμής που είναι πιο κοντά στο άθροισμα
@@ -225,6 +233,18 @@ export function parseReceipt(text, opts = {}) {
       if (!far(best)) total = best;
     }
   }
+  // Μία τιμή που δεν διαβάστηκε καθόλου παίρνει ό,τι λείπει για να βγει το σύνολο
+  const unk = items.filter(i => i.unknown);
+  // (το πρώτο ψηφίο που λείπει επιλέγεται ώστε το άθροισμα να πλησιάζει όσο γίνεται το σύνολο)
+  if (total && unk.length === 1) {
+    const it = unk[0], rest = items.reduce((a, i) => a + i.price, 0);
+    let best = null;
+    for (let d = 0; d <= 9; d++) {
+      const base = +`${d}.${it.unknown}`, diff = Math.abs(rest + base - total);
+      if (base > 0 && (!best || diff < best.diff)) best = { base, diff };
+    }
+    if (best) it.price = Math.round((it.price + best.base) * 100) / 100;
+  }
   // Αν το άθροισμα δεν ταιριάζει με το σύνολο, δοκιμάζει τις άλλες εκδοχές των αμφίβολων τιμών
   if (total) {
     const diffNow = () => Math.round((items.reduce((a, i) => a + i.price, 0) - total) * 100) / 100;
@@ -241,7 +261,7 @@ export function parseReceipt(text, opts = {}) {
       it.price = best;
     }
   }
-  items.forEach(i => { delete i.alts; delete i.base0; });
+  items.forEach(i => { delete i.alts; delete i.base0; delete i.unknown; });
   return { store, date, total, items };
 }
 

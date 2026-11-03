@@ -26,11 +26,12 @@ function mergeMap(a = {}, b = {}) {
   return out;
 }
 
+// aliases: ονόματα από αποδείξεις -> όνομα προϊόντος του χρήστη ("ΓΙΑΟΥΡ ΑΓΕΛ" -> "Γιαούρτι"), { t, c, u }
 // b wins ties
 export function mergeDocs(a, b) {
   a = a || emptyDoc();
   b = b || emptyDoc();
-  const out = { v: 1, meals: mergeMap(a.meals, b.meals) };
+  const out = { v: 1, meals: mergeMap(a.meals, b.meals), aliases: mergeMap(a.aliases, b.aliases) };
   for (const k of KINDS) out[k] = mergeArr(a[k], b[k]);
   return out;
 }
@@ -43,9 +44,11 @@ export function aheadOf(local, server) {
       if (!m.has(x.id) || (x.u || 0) > m.get(x.id)) return true;
     }
   }
-  const sm = server.meals || {};
-  for (const [k, v] of Object.entries(local.meals || {})) {
-    if (!sm[k] || (v.u || 0) > (sm[k].u || 0)) return true;
+  for (const map of ["meals", "aliases"]) {
+    const sm = server[map] || {};
+    for (const [k, v] of Object.entries(local[map] || {})) {
+      if (!sm[k] || (v.u || 0) > (sm[k].u || 0)) return true;
+    }
   }
   return false;
 }
