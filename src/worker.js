@@ -16,6 +16,7 @@
 // POST /api/auth/logout
 // GET  /api/data           (Authorization: Bearer <token>)
 // POST /api/data           συγχώνευση με το αποθηκευμένο, επιστρέφει το αποτέλεσμα
+// GET  /api/receipt-doc?u=<url>    η σελίδα της ψηφιακής απόδειξης από το QR (proxy, μόνο συνδεδεμένοι)
 // GET  /api/recipes                 όλες οι συνταγές (ευρετήριο)
 // GET  /api/recipes/<id>            μία συνταγή
 // POST /api/recipes                 νέα ή αλλαγή (μόνο ο δημιουργός)
@@ -264,6 +265,23 @@ async function getImage(env, id) {
   return new Response(value, { headers: { "content-type": (metadata && metadata.type) || "image/jpeg", "cache-control": "public, max-age=31536000, immutable" } });
 }
 
+// Η σελίδα της ψηφιακής απόδειξης (από το QR) μέσω του Worker, γιατί ο browser δεν μπορεί να τη διαβάσει (CORS).
+// Μόνο για συνδεδεμένους, μόνο https σε κανονικό όνομα (όχι IP/θύρα), μέχρι ~2MB.
+async function receiptDoc(request) {
+  const u = new URL(request.url).searchParams.get("u") || "";
+  let t;
+  try { t = new URL(u); } catch { return fail(400, "Μη έγκυρος σύνδεσμος."); }
+  if (t.protocol !== "https:" || t.port || t.username || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(t.hostname) || /^[\d.]+$/.test(t.hostname))
+    return fail(400, "Μη έγκυρος σύνδεσμος.");
+  let r;
+  try {
+    r = await fetch(t.toString(), { redirect: "follow", headers: { accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5", "accept-language": "el-GR,el;q=0.9", "user-agent": "Mozilla/5.0 (compatible; PsoniaReceipt/1.0)" } });
+  } catch { return fail(502, "Δεν απάντησε η σελίδα της απόδειξης."); }
+  if (!r.ok) return fail(502, `Η σελίδα της απόδειξης απάντησε ${r.status}.`);
+  if (+(r.headers.get("content-length") || 0) > 2e6) return fail(413, "Πολύ μεγάλη σελίδα.");
+  return new Response(r.body, { headers: { "content-type": r.headers.get("content-type") || "text/html; charset=utf-8", "cache-control": "no-store", "x-final-url": r.url } });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -292,6 +310,11 @@ export default {
       if (id && !sub && request.method === "GET") { const r = await getRecipe(env, id); return r ? json(r) : fail(404, "Η συνταγή δεν βρέθηκε."); }
       if (id && sub === "delete" && post) return deleteRecipe(env, s, id);
       if (id && sub === "img" && post) return putImage(request, env, s, id);
+    }
+    if (pathname === "/api/receipt-doc" && request.method === "GET") {
+      const s = await auth(request, env);
+      if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
+      return receiptDoc(request);
     }
     if (pathname === "/api/aliases") {
       const s = await auth(request, env);

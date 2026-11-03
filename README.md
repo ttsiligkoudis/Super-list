@@ -56,6 +56,7 @@ npm run dev
 - `public/products.js`: ο βασικός κατάλογος με περίπου 600 προϊόντα σούπερ μάρκετ ανά διάδρομο, ίδιος για όλους τους χρήστες
 - `public/receipt.js`: ανάγνωση απόδειξης (κατάστημα, ημερομηνία, σύνολο, προϊόντα) από το κείμενο που βγάζει το OCR
 - `public/ocr/`: το [Tesseract.js](https://github.com/naptha/tesseract.js) (Apache 2.0) με ελληνικά και αγγλικά (τα αγγλικά μόνο για τα ονόματα με λατινικά). Η αναγνώριση γίνεται στη συσκευή και τα αρχεία (~8 MB) κατεβαίνουν μόνο την πρώτη φορά που θα εισαγάγεις απόδειξη.
+- `public/ocr/jsqr.min.js`: το [jsQR](https://github.com/cozmo/jsQR) (Apache 2.0) για το QR της απόδειξης όταν ο browser δεν έχει BarcodeDetector. Η σελίδα της ψηφιακής απόδειξης (π.χ. Epsilon Net) διαβάζεται μέσω του `/api/receipt-doc`, μόνο για συνδεδεμένους.
 - `public/merge.js`: ο κανόνας συγχώνευσης, κοινός για κινητό και server
 - `public/sw.js`, `manifest.webmanifest`, εικονίδια: offline και εγκατάσταση
 

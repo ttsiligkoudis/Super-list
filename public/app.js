@@ -1108,10 +1108,10 @@ function rcptSheet(msg = "") {
       <div class="rcpt-pick">
         <label class="btn wide">${ic("camera")}Φωτογραφίες ή αρχεία<input type="file" accept="image/*" id="rcptFile" multiple hidden></label>
       </div>
-      <p class="small muted">Μεγάλη απόδειξη; Βγάλε όσες φωτογραφίες χρειάζεται, από πάνω προς τα κάτω, και διάλεξέ τις όλες μαζί. Ό,τι φαίνεται σε δύο φωτογραφίες μετράει μία φορά.</p>
+      <p class="small muted">Καλύτερα να φαίνεται και το QR στο κάτω μέρος: από εκεί έρχονται όλα τα προϊόντα με ακριβή ποσά. Μεγάλη απόδειξη χωρίς QR; Βγάλε όσες φωτογραφίες χρειάζεται, από πάνω προς τα κάτω, και διάλεξέ τις όλες μαζί. Ό,τι φαίνεται σε δύο φωτογραφίες μετράει μία φορά.</p>
       <details class="rcpt-paste"><summary>Ή επικόλλησε το κείμενο της απόδειξης</summary>
         <form data-form="rcpt-text" autocomplete="off">
-          <textarea class="field" name="text" rows="6" spellcheck="false" placeholder="Π.χ. από ηλεκτρονική απόδειξη"></textarea>
+          <textarea class="field" name="text" rows="6" spellcheck="false" placeholder="Το κείμενο ή τον σύνδεσμο της ψηφιακής απόδειξης (από το QR)"></textarea>
           <button class="btn" type="submit">Ανάγνωση</button>
         </form>
       </details>
@@ -1275,14 +1275,87 @@ function joinShots(shots) {
   }
   return { text, r };
 }
+// QR της απόδειξης: οι ελληνικές αποδείξεις έχουν QR προς την ψηφιακή απόδειξη στον πάροχο (π.χ. Epsilon Net),
+// με όλες τις γραμμές και τα ακριβή ποσά. Αν βρεθεί, δεν χρειάζεται ανάγνωση κειμένου.
+async function findQr(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch { return null; }
+  const isUrl = v => /^https:\/\/\S+$/i.test(v || "");
+  try {
+    if ("BarcodeDetector" in window) {
+      try {
+        const f = await window.BarcodeDetector.getSupportedFormats();
+        if (f.includes("qr_code")) {
+          const found = await new window.BarcodeDetector({ formats: ["qr_code"] }).detect(bmp);
+          const u = found.map(x => x.rawValue).find(isUrl);
+          if (u) return u;
+        }
+      } catch { /* συνεχίζει με το jsQR */ }
+    }
+    if (!window.jsQR) await loadScript("/ocr/jsqr.min.js");
+    // το jsQR πιάνει το QR σε διαφορετικό μέγεθος ανάλογα με τη φωτογραφία: δοκιμάζει μερικά
+    const tried = new Set();
+    for (const W of [600, 800, 450, 1000, 1300]) {
+      const k = Math.min(1, W / bmp.width), w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+      if (tried.has(w)) continue; tried.add(w);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(bmp, 0, 0, w, h);
+      const r = window.jsQR(g.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+      if (r && isUrl(r.data)) return r.data;
+    }
+  } catch (e) { console.warn(e); } finally { bmp.close && bmp.close(); }
+  return null;
+}
+// HTML -> κείμενο: κάθε γραμμή πίνακα με tabs, το υπόλοιπο ένα κομμάτι ανά γραμμή (όπως το διαβάζει το parseProviderDoc)
+function htmlToText(html) {
+  const d = new DOMParser().parseFromString(html, "text/html");
+  d.querySelectorAll("script,style,noscript,template").forEach(e => e.remove());
+  const out = [], clean = t => t.replace(/\s+/g, " ").trim();
+  const walk = el => {
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) { const t = clean(n.textContent); if (t) out.push(t); }
+      else if (n.nodeType === 1) {
+        if (n.tagName === "TR") out.push([...n.children].map(c => clean(c.textContent)).join("\t"));
+        else walk(n);
+      }
+    }
+  };
+  if (d.body) walk(d.body);
+  return out.join("\n");
+}
+let rcptExact = false, rcptQrUrl = "";
+// Διαβάζει την ψηφιακή απόδειξη από τον σύνδεσμο. true αν βγήκαν προϊόντα.
+async function readReceiptDoc(url, say) {
+  rcptQrUrl = url;
+  if (!session) return false;
+  say("Βρήκα το QR, φέρνω την ψηφιακή απόδειξη…", 0.3);
+  try {
+    const r = await fetch("/api/receipt-doc?u=" + encodeURIComponent(url), { headers: authH() });
+    if (!r.ok) return false;
+    const body = await r.text();
+    const text = /<html|<body|<div|<table/i.test(body) ? htmlToText(body) : body;
+    const parsed = parseReceipt(text);
+    if (!parsed.exact || !parsed.items.length) return false;
+    rcptShots = []; rcptExact = true;
+    showReceipt(text, parsed);
+    return true;
+  } catch (e) { console.warn(e); return false; }
+}
 let rcptShots = [];
 async function readReceiptFiles(files, append = false) {
   files = [...files].filter(f => f && /^image\//.test(f.type || "image/"));
   if (!files.length || !$("#rcptBox")) return;
   const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
-  say("Ετοιμάζω την ανάγνωση…", 0.02);
-  if (!append) rcptShots = [];
+  say("Ψάχνω το QR της απόδειξης…", 0.02);
+  if (!append) { rcptShots = []; rcptQrUrl = ""; }
+  rcptExact = false;
   try {
+    // πρώτα το QR (συνήθως στην τελευταία φωτογραφία, κάτω κάτω)
+    if (!append) for (const f of [...files].reverse()) {
+      const url = await findQr(f);
+      if (url) { if (await readReceiptDoc(url, say)) return; break; }
+    }
+    say("Ετοιμάζω την ανάγνωση…", 0.02);
     for (let k = 0; k < files.length; k++) rcptShots.push(await ocrShot(files[k], say, k, files.length));
     ocrProgress = null;
     const { text, r } = joinShots(rcptShots);
@@ -1649,6 +1722,7 @@ function rcptReview() {
         <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
       ${rcptShots.length ? `<label class="btn ghost wide rcpt-more">${ic("camera")}Πρόσθεσε κι άλλη φωτογραφία${rcptShots.length > 1 ? ` <span class="muted">· ${rcptShots.length}</span>` : ""}<input type="file" accept="image/*" id="rcptMore" multiple hidden></label>` : ""}
+      ${rcptExact ? `<p class="rcpt-note"><span class="rcpt-ok">${ic("check")}Από την ψηφιακή απόδειξη (QR): ακριβή προϊόντα και ποσά</span></p>` : rcptQrUrl ? `<p class="small muted">Βρήκα το QR αλλά η σελίδα του δεν έδωσε τα προϊόντα. <a href="${esc(rcptQrUrl)}" target="_blank" rel="noopener">Άνοιξέ την</a>, αντέγραψε όλη τη σελίδα και επικόλλησέ τη στο «επικόλλησε το κείμενο».</p>` : ""}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
         <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
@@ -2215,7 +2289,14 @@ document.addEventListener("submit", e => {
     return;
   }
   if (kind === "rcpt-text") {
-    if ((v.text || "").trim()) { rcptShots = []; showReceipt(v.text); }
+    const tx = (v.text || "").trim();
+    if (/^https:\/\/\S+$/i.test(tx)) {
+      // σύνδεσμος ψηφιακής απόδειξης (από το QR)
+      const box = $("#rcptBox");
+      const say = t => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:40%"></span></div></div>`; };
+      if (box) say("Φέρνω την ψηφιακή απόδειξη…");
+      readReceiptDoc(tx, say).then(ok => { if (!ok) openSheet(rcptSheet(session ? "Δεν βρήκα προϊόντα σε αυτόν τον σύνδεσμο. Άνοιξέ τον, αντέγραψε όλη τη σελίδα και επικόλλησέ την εδώ." : "Χρειάζεται σύνδεση στον λογαριασμό για να ανοίξει ο σύνδεσμος.")); });
+    } else if (tx) { rcptShots = []; rcptExact = false; showReceipt(v.text); }
     return;
   }
   if (kind === "rcpt-save") { saveReceipt(f, v); return; }

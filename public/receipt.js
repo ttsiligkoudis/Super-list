@@ -134,7 +134,61 @@ function itemLine(l) {
   return price ? { name: toks.join(" "), price, alts, n: nums.length } : null;
 }
 
+// Ψηφιακή απόδειξη από τον πάροχο ηλεκτρονικής τιμολόγησης (σελίδα του QR): πίνακας «Γραμμές Παραστατικού»
+// με Περιγραφή, Ποσότητα, Μονάδα, ΦΠΑ, Καθαρή αξία. Ακριβή δεδομένα, μετά τις εκπτώσεις.
+// Δέχεται γραμμές με tabs (αντιγραφή από υπολογιστή) ή ένα κελί ανά γραμμή (αντιγραφή από κινητό).
+export function parseProviderDoc(text) {
+  const raw = String(text || "").replace(/\r/g, "");
+  if (!/Γραμμ[εέ]ς Παραστατικο[υύ]|Περιγραφ[ηή] Ε[ιί]δους/i.test(raw)) return null;
+  const k = s => s.toLocaleLowerCase("el").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const h = lines.findIndex(l => /περιγραφη/.test(k(l)));
+  if (h < 0) return null;
+  // κεφαλίδα: στη μία γραμμή με tabs ή ένα κελί ανά γραμμή (από το «Α/Α» ως πριν το πρώτο «1»)
+  let head, at;
+  if (lines[h].includes("\t")) { head = lines[h].split("\t").map(k); at = h + 1; }
+  else {
+    let a = h; while (a > 0 && !/^[αa]\/[αa]$/.test(k(lines[a]))) a--;
+    if (!/^[αa]\/[αa]$/.test(k(lines[a]))) a = h;
+    let b = h + 1; while (b < lines.length && !/^1$/.test(lines[b])) b++;
+    head = lines.slice(a, b).map(k); at = b;
+  }
+  const col = re => head.findIndex(c => re.test(c));
+  const cD = col(/περιγραφ/), cQ = col(/ποσοτητ/), cU = col(/μοναδ/), cV = col(/αξια φπα|ποσο φπα/), cN = col(/καθαρη/), cT = col(/συνολικη|τελικη|συνολο/);
+  if (cD < 0 || (cN < 0 && cT < 0)) return null;
+  const n = head.length;
+  // τα κελιά μετά την κεφαλίδα μέχρι τα σύνολα/πληρωμή
+  const cells = [];
+  for (let i = at; i < lines.length; i++) {
+    if (/^(τροποι πληρωμης|συνολα παραστατικου|πληρωμες)/.test(k(lines[i]))) break;
+    cells.push(...lines[i].split("\t").map(c => c.trim()));
+  }
+  const dec = s => { const v = parseFloat(String(s || "").replace(/\./g, "").replace(",", ".")); return isFinite(v) ? v : 0; };
+  const items = [];
+  for (let i = 0; i + n <= cells.length;) {
+    const row = cells.slice(i, i + n);
+    if (!/^\d+$/.test(row[0]) || +row[0] !== items.length + 1) { i++; continue; }
+    const price = Math.round((cT >= 0 ? dec(row[cT]) : dec(row[cN]) + (cV >= 0 ? dec(row[cV]) : 0)) * 100) / 100;
+    const q = cQ >= 0 ? dec(row[cQ]) : 1, unit = cU >= 0 ? k(row[cU]) : "";
+    const qty = /κιλ|kg/.test(unit) ? `${String(q).replace(".", ",")} κιλά` : q > 1 ? `×${q}` : "";
+    items.push({ raw: row[cD], price, qty, line: -1, exact: true });
+    i += n;
+  }
+  if (!items.length) return null;
+  const after = re => { const i = lines.findIndex(l => re.test(k(l))); if (i < 0) return null;
+    const same = lines[i].split(/:\s*|\t/).slice(1).join(" ").trim(); return same || lines[i + 1] || null; };
+  const t = after(/^συνολικη αξια|^πληρωτεο|^συνολο/);
+  const total = t != null ? dec(t) || null : null;
+  const dm = (after(/^ημ\/?νια εκδοσης|^ημερομηνια/) || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const date = dm ? { d: +dm[1], m: +dm[2], y: +dm[3] } : null;
+  let store = "";
+  for (const [id, re] of STORE_HINTS) if (re.test(k(raw)) || re.test(raw)) { store = id; break; }
+  return { store, date, total, items, exact: true };
+}
+
 export function parseReceipt(text, opts = {}) {
+  const prov = parseProviderDoc(text);
+  if (prov) return prov;
   const raw = String(text || "").replace(/\r/g, "");
   // srcIdx: σε ποια γραμμή του αρχικού κειμένου αντιστοιχεί κάθε γραμμή (για ξαναδιάβασμα των ονομάτων)
   const srcIdx = [];
