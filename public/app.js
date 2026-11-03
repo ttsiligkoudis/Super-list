@@ -2,7 +2,7 @@ import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
 import { BUILTIN_PRODUCTS } from "./products.js";
-import { parseReceipt, matchProduct, niceName, mergeLatin } from "./receipt.js";
+import { parseReceipt, matchProduct, niceName, mergeLatin, receiptOverlap } from "./receipt.js";
 import { PRODUCT_BRANDS } from "./brands.js";
 
 /* ---------- constants ---------- */
@@ -1106,8 +1106,9 @@ function rcptSheet(msg = "") {
     <div id="rcptBox">
       ${msg ? `<p class="rcpt-err">${esc(msg)}</p>` : ""}
       <div class="rcpt-pick">
-        <label class="btn wide">${ic("camera")}Φωτογραφία ή αρχείο<input type="file" accept="image/*" id="rcptFile" hidden></label>
+        <label class="btn wide">${ic("camera")}Φωτογραφίες ή αρχεία<input type="file" accept="image/*" id="rcptFile" multiple hidden></label>
       </div>
+      <p class="small muted">Μεγάλη απόδειξη; Βγάλε όσες φωτογραφίες χρειάζεται, από πάνω προς τα κάτω, και διάλεξέ τις όλες μαζί. Ό,τι φαίνεται σε δύο φωτογραφίες μετράει μία φορά.</p>
       <details class="rcpt-paste"><summary>Ή επικόλλησε το κείμενο της απόδειξης</summary>
         <form data-form="rcpt-text" autocomplete="off">
           <textarea class="field" name="text" rows="6" spellcheck="false" placeholder="Π.χ. από ηλεκτρονική απόδειξη"></textarea>
@@ -1155,38 +1156,136 @@ async function latinNames(img, data, r, say) {
     if (m && /[A-Za-zΑ-Ωα-ω]{2}/.test(m)) it.raw = m;
   }
 }
+// Πού είναι το χαρτί της απόδειξης: οι στήλες (και μετά οι γραμμές) που είναι κυρίως φωτεινές.
+// Ο πάγκος/το τραπέζι γύρω της κόβεται, γιατί το OCR βλέπει «γράμματα» στα σχέδιά του.
+function paperBox(bmp) {
+  const W = 160, H = Math.max(40, Math.round(bmp.height * W / bmp.width));
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(bmp, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data, lum = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  const sorted = [...lum].sort((a, b) => a - b), thr = sorted[Math.floor(sorted.length * 0.95)] * 0.82;
+  const run = (n, frac, min) => { let best = [0, n - 1], s = -1; let bl = 0;
+    for (let i = 0; i <= n; i++) { const on = i < n && frac(i) >= min;
+      if (on && s < 0) s = i; if (!on && s >= 0) { if (i - s > bl) { bl = i - s; best = [s, i - 1]; } s = -1; } }
+    return { a: best[0], b: best[1], len: bl }; };
+  const col = x => { let n = 0; for (let y = 0; y < H; y++) if (lum[y * W + x] > thr) n++; return n / H; };
+  const cx = run(W, col, 0.35);
+  if (cx.len < W * 0.15 || cx.len > W * 0.9) return null; // δεν φαίνεται καθαρά φόντο γύρω της
+  const row = y => { let n = 0; for (let x = cx.a; x <= cx.b; x++) if (lum[y * W + x] > thr) n++; return n / (cx.b - cx.a + 1); };
+  const cy = run(H, row, 0.5);
+  const k = bmp.width / W, padX = 3, padY = 2;
+  const x0 = Math.max(0, cx.a - padX) * k, x1 = Math.min(W, cx.b + 1 + padX) * k;
+  const y0 = cy.len > H * 0.2 ? Math.max(0, cy.a - padY) * k : 0, y1 = cy.len > H * 0.2 ? Math.min(H, cy.b + 1 + padY) * k : bmp.height;
+  // ανά γραμμή, πού αρχίζει και πού τελειώνει το χαρτί (η απόδειξη συχνά είναι λίγο στραβή).
+  // Μετράει μια λωρίδα ±6 γραμμών, ώστε τα κενά ανάμεσα στις σειρές κειμένου να δείχνουν το χαρτί.
+  const mid = (cx.a + cx.b) >> 1, rows = [], B = 6;
+  const pre = new Uint16Array((H + 1) * W); // αθροίσματα φωτεινών ανά στήλη
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) pre[(y + 1) * W + x] = pre[y * W + x] + (lum[y * W + x] > thr ? 1 : 0);
+  for (let y = 0; y < H; y++) {
+    const ya = Math.max(0, y - B), yb = Math.min(H, y + B + 1);
+    const paper = x => x >= 0 && x < W && (pre[yb * W + x] - pre[ya * W + x]) / (yb - ya) >= 0.3;
+    const gap = (x, dir) => !paper(x) && !paper(x + dir);
+    let l = mid, r = mid;
+    while (l > 0 && !gap(l - 1, -1)) l--;
+    while (r < W - 1 && !gap(r + 1, 1)) r++;
+    rows.push([l * k, (r + 1) * k]);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, rows, rowH: k };
+}
 // Γκρι και σε μέγεθος που διαβάζει καλά το OCR (οι μικρές φωτογραφίες μεγαλώνουν, οι τεράστιες μικραίνουν)
 async function prepImage(file) {
   const bmp = await createImageBitmap(file);
-  const target = bmp.width < 1000 ? 1400 : Math.min(bmp.width, 2200);
-  const k = target / bmp.width;
+  let box = null;
+  try { box = paperBox(bmp); } catch { box = null; }
+  box = box || { x: 0, y: 0, w: bmp.width, h: bmp.height };
+  const target = box.w < 1000 ? 1400 : Math.min(box.w, 2200);
+  const k = target / box.w;
   const c = document.createElement("canvas");
-  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.width = Math.round(box.w * k); c.height = Math.round(box.h * k);
   const g = c.getContext("2d");
   g.filter = "grayscale(1) contrast(1.15)";
   g.imageSmoothingQuality = "high";
-  g.drawImage(bmp, 0, 0, c.width, c.height);
+  g.drawImage(bmp, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
+  // ό,τι δεν είναι χαρτί γίνεται λευκό
+  if (box.rows) {
+    g.filter = "none"; g.fillStyle = "#fff";
+    box.rows.forEach(([l, r], i) => {
+      const y = (i * box.rowH - box.y) * k, h = box.rowH * k + 1;
+      if (y + h < 0 || y > c.height) return;
+      const L = (l - box.x) * k - 4, R = (r - box.x) * k + 4;
+      if (L > 0) g.fillRect(0, y, L, h);
+      if (R < c.width) g.fillRect(R, y, c.width - R, h);
+    });
+  }
   bmp.close && bmp.close();
   return c;
 }
-async function readReceiptFile(file) {
-  const box = $("#rcptBox");
-  if (!box) return;
-  const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
-  say("Ετοιμάζω την ανάγνωση…", 0.02);
+// Μία φωτογραφία -> { lines, items } (items με τα ονόματα και από το αγγλικό πέρασμα)
+async function ocrShot(file, say, k, n) {
+  const part = n > 1 ? ` (${k + 1} από ${n})` : "";
+  const at = p => (k + p) / n;
   let latin = false;
   ocrProgress = m => {
-    if (m.status === "recognizing text" && !latin) say("Διαβάζω την απόδειξη…", 0.3 + m.progress * 0.55);
-    else if (/load|initializ/.test(m.status) && !latin) say("Κατεβαίνει η αναγνώριση κειμένου (μόνο την πρώτη φορά)…", Math.min(0.3, 0.05 + (m.progress || 0) * 0.25));
+    if (m.status === "recognizing text" && !latin) say(`Διαβάζω την απόδειξη${part}…`, at(0.3 + m.progress * 0.55));
+    else if (/load|initializ/.test(m.status) && !latin) say("Κατεβαίνει η αναγνώριση κειμένου (μόνο την πρώτη φορά)…", at(Math.min(0.3, 0.05 + (m.progress || 0) * 0.25)));
   };
+  const [w, img] = await Promise.all([ocrWorkerReady(), prepImage(file)]);
+  const { data } = await w.recognize(img);
+  // το κείμενο φτιάχνεται από τις γραμμές, ώστε κάθε προϊόν να ξέρει τη θέση του στη φωτογραφία
+  const text = (data.lines || []).map(l => l.text.replace(/\n+$/, "")).join("\n") || data.text;
+  const r = parseReceipt(text);
+  if (data.lines && data.lines.length) { latin = true; await latinNames(img, data, r, (t, p) => say(t + part, at(p))); }
+  return { lines: text.split("\n"), items: r.items, total: r.total };
+}
+// Ενώνει τις φωτογραφίες σε ένα κείμενο: όπου μια φωτογραφία ξαναδείχνει προϊόντα της προηγούμενης,
+// κρατάει μόνο μία φορά το κοινό κομμάτι. Τα ονόματα του αγγλικού περάσματος μεταφέρονται στο τέλος.
+function joinShots(shots) {
+  // σειρά: δοκιμάζει τις μεταθέσεις (λίγες φωτογραφίες) και κρατά αυτή με τα περισσότερα κοινά κομμάτια,
+  // με τη φωτογραφία που έχει το σύνολο στο τέλος (π.χ. όταν διαλέχτηκε πρώτα η κάτω)
+  let order = [...shots];
+  if (shots.length > 1 && shots.length <= 5) {
+    const perms = a => a.length < 2 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p]));
+    let best = -Infinity;
+    for (const p of perms(shots)) {
+      let sc = 0;
+      for (let k = 0; k + 1 < p.length; k++) { const o = receiptOverlap(p[k].items, p[k + 1].items); sc += o ? o.score : -1; }
+      p.forEach((x, k) => { if (x.total != null && k < p.length - 1) sc -= 20; });
+      if (sc > best) { best = sc; order = p; }
+    }
+  }
+  let lines = [...order[0].lines], src = lines.map((_, i) => [order[0], i]);
+  for (let k = 1; k < order.length; k++) {
+    const B = order[k];
+    const cur = parseReceipt(lines.join("\n")).items;
+    const ov = receiptOverlap(cur, B.items);
+    let from = 0;
+    if (ov) {
+      const cut = ov.i < cur.length ? cur[ov.i].line : lines.length;
+      lines = lines.slice(0, cut); src = src.slice(0, cut);
+      from = B.items[ov.j].line;
+    }
+    for (let i = from; i < B.lines.length; i++) { lines.push(B.lines[i]); src.push([B, i]); }
+  }
+  const text = lines.join("\n"), r = parseReceipt(text);
+  for (const it of r.items) {
+    const [shot, li] = src[it.line] || [];
+    const orig = shot && shot.items.find(x => x.line === li);
+    if (orig && orig.raw) it.raw = orig.raw;
+  }
+  return { text, r };
+}
+let rcptShots = [];
+async function readReceiptFiles(files, append = false) {
+  files = [...files].filter(f => f && /^image\//.test(f.type || "image/"));
+  if (!files.length || !$("#rcptBox")) return;
+  const say = (t, pct) => { const b = $("#rcptBox"); if (b) b.innerHTML = `<div class="rcpt-prog"><p>${esc(t)}</p><div class="pbar"><span style="width:${Math.round((pct || 0) * 100)}%"></span></div></div>`; };
+  say("Ετοιμάζω την ανάγνωση…", 0.02);
+  if (!append) rcptShots = [];
   try {
-    const [w, img] = await Promise.all([ocrWorkerReady(), prepImage(file)]);
-    const { data } = await w.recognize(img);
-    // το κείμενο φτιάχνεται από τις γραμμές, ώστε κάθε προϊόν να ξέρει τη θέση του στη φωτογραφία
-    const text = (data.lines || []).map(l => l.text.replace(/\n+$/, "")).join("\n") || data.text;
-    const r = parseReceipt(text);
-    if (data.lines && data.lines.length) { latin = true; await latinNames(img, data, r, say); }
+    for (let k = 0; k < files.length; k++) rcptShots.push(await ocrShot(files[k], say, k, files.length));
     ocrProgress = null;
+    const { text, r } = joinShots(rcptShots);
     showReceipt(text, r);
   } catch (err) {
     ocrProgress = null;
@@ -1531,6 +1630,7 @@ function rcptReview() {
           <label><input type="radio" name="target" value=""><span>Όχι, νέα λίστα</span></label></div>
         <p class="small muted" id="rcptPair"></p></div>` : ""}
       ${payFields({ amount, payStore: store }, true, brand)}
+      ${rcptShots.length ? `<label class="btn ghost wide rcpt-more">${ic("camera")}Πρόσθεσε κι άλλη φωτογραφία${rcptShots.length > 1 ? ` <span class="muted">· ${rcptShots.length}</span>` : ""}<input type="file" accept="image/*" id="rcptMore" multiple hidden></label>` : ""}
       <p class="rcpt-note">${total ? `<span class="rcpt-ok">${ic("check")}Το σύνολο είναι από την απόδειξη</span>` : note(false, items.length ? " σύνολο, μπήκε το άθροισμα των προϊόντων" : " σύνολο")}</p>
       ${items.length ? `<div class="rcpt-head"><h3>Προϊόντα <span class="muted num" id="rcptCount">${items.length}</span></h3>
         <span class="small muted">Άθροισμα <b class="num${amount && Math.abs(amount - sum) > 0.009 ? " off" : ""}" id="rcptSum" title="Αν διαφέρει από το σύνολο, κάποια τιμή διαβάστηκε λάθος">${eur(sum)}</b></span></div>
@@ -1988,7 +2088,7 @@ document.addEventListener("toggle", e => {
 
 document.addEventListener("change", e => {
   const el = e.target;
-  if (el.id === "rcptFile") { if (el.files[0]) readReceiptFile(el.files[0]); return; }
+  if (el.id === "rcptFile" || el.id === "rcptMore") { const fs = [...el.files]; el.value = ""; if (fs.length) { if (el.id === "rcptMore") openSheet(rcptSheet()); readReceiptFiles(fs, el.id === "rcptMore"); } return; }
   if (el.id === "rcpFile" && el.files[0]) {
     shrinkImage(el.files[0]).then(blob => {
       if (!blob) return;
@@ -2096,7 +2196,7 @@ document.addEventListener("submit", e => {
     return;
   }
   if (kind === "rcpt-text") {
-    if ((v.text || "").trim()) showReceipt(v.text);
+    if ((v.text || "").trim()) { rcptShots = []; showReceipt(v.text); }
     return;
   }
   if (kind === "rcpt-save") { saveReceipt(f, v); return; }

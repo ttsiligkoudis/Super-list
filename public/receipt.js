@@ -132,7 +132,14 @@ export function parseReceipt(text, opts = {}) {
   const raw = String(text || "").replace(/\r/g, "");
   // srcIdx: σε ποια γραμμή του αρχικού κειμένου αντιστοιχεί κάθε γραμμή (για ξαναδιάβασμα των ονομάτων)
   const srcIdx = [];
-  const lines = raw.split("\n").map(l => l.replace(/\s+/g, " ").replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter((l, i) => l && srcIdx.push(i));
+  const lines = raw.split("\n").map(l => l.replace(/[΄᾿’‘“”`´]/g, " ").replace(/\s+/g, " ").trim())
+    // γραμμή μόνο με νούμερα (ζυγιζόμενα: ποσότητα, τιμή μονάδας, ποσό, ΦΠΑ): «5 50» πριν το ΦΠΑ = 5,50
+    .map(l => /[A-Za-zΑ-Ωα-ω]{2}/.test(l) ? l : l.replace(/(^|\s)(\d{1,3}) (\d{2})(?=\s+\S+$)/, "$1$2,$3"))
+    // ΦΠΑ στο τέλος με κενό αντί για κόμμα («24 004», «13 00χ») και η τιμή πριν από αυτό («24 78»)
+    .map(l => l.replace(/(\s)(6|13|24) (00\d?\S{0,2})$/, "$1$2,$3").replace(/(\s\d{1,3}) (\d{2})(?= (?:6|13|24)[,.]\d{2,3}\S{0,2}$)/, "$1,$2"))
+    // «4:25», «1/56»: άνω τελεία ή κάθετος αντί για κόμμα σε τιμή
+    .map(l => l.replace(/(\s-?\d{1,3})[:\/](\d{2})(?=[\s.,']|$)/g, "$1,$2").replace(/(\d[.,]\d)\](?=\s|$)/g, "$17"))
+    .map(l => l.replace(/(\d)\. (\d{3,4})(?=\s|$)/g, "$1.$2").replace(/(\s\d{1,3})[)\]](\d{2})(?=\s|$)/g, "$1,$2").replace(/(\d) ?([.,]) (?=\d{2}\b)|(\d) ([.,])(?=\d{2}\b)/g, (m, a, b, c, d) => (a ?? c) + (b ?? d)).trim().split(" ").map(fixNumber).join(" ")).filter((l, i) => l && srcIdx.push(i));
   const low = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   // κατάστημα
@@ -210,13 +217,24 @@ export function parseReceipt(text, opts = {}) {
     if (SKIP.test(n) || SKIP.test(keyOf(l))) continue;
     const m = itemLine(l);
     if (!m) continue;
-    const price = m.price;
+    // αρνητική τιμή σε γραμμή που δεν είναι έκπτωση: το «-» είναι σκουπίδι του OCR («ΡΑ΄-1,98»)
+    const price = m.price < 0 ? -m.price : m.price;
     let name = m.name.replace(/\s*\.\s*/g, ".").trim();
     if (price == null || (price <= 0 && !m.unknown) || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     if (m.alts) m.alts.cur = price;
     // κρατικές χρεώσεις (περιβαλλοντικό τέλος σακούλας, εγγύηση φιάλης): όχι προϊόν, πάνε στις «Λοιπές χρεώσεις»
     const fee = /περιβαλ|περιβαν|τελος ανακ|τελος σακ|εγγυησ|φορος|εισφορα/.test(keyOf(name)) ? (/εγγυησ/.test(keyOf(name)) ? "Εγγύηση συσκευασίας" : "Περιβαλλοντικό τέλος") : "";
+    // «ΕΚΠΤΩΣΗ <όνομα προηγούμενου>» με χαλασμένη τη λέξη έκπτωση («ΓΚΠΤΩΣΗ», «ΕΝΜΠΗΑΖΗ»):
+    // ίδιο όνομα με το προηγούμενο προϊόν μετά την πρώτη λέξη, μικρότερο ποσό -> αφαιρείται από εκείνο
+    const prev = items[items.length - 1], w = name.replace(/^[^A-Za-zΑ-Ωα-ω]+/, "").split(" ");
+    if (prev && !fee && w.length > 1 && price < prev.price) {
+      const rest = w.slice(1).join(" "), first = w[0];
+      if (/^.?κπτ|^εκπ/.test(keyOf(first)) || (rest.length >= 8 && dice(bigrams(rest), bigrams(prev.raw)) >= 0.6 && dice(bigrams(first), bigrams(prev.raw.split(" ")[0])) < 0.3)) {
+        prev.price = Math.round((prev.price - price) * 100) / 100;
+        continue;
+      }
+    }
     items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown, fee });
   }
   // Έλεγχος με το άθροισμα των προϊόντων: αν το «ΣΥΝΟΛΟ» απέχει πολύ (π.χ. διαβάστηκε ο πίνακας ΦΠΑ),
@@ -359,4 +377,43 @@ export function mergeLatin(gWords, eWords) {
     }
   }
   return out.join(" ").replace(/\s*\.\s*/g, ".").trim();
+}
+
+// Πολλές φωτογραφίες της ίδιας απόδειξης: πού η B συνεχίζει την A.
+// Ψάχνει το κομμάτι που φαίνεται και στις δύο (τέλος της A = αρχή της B), με ανοχή σε λάθη OCR
+// και σε γραμμές κομμένες στις άκρες. Επιστρέφει { i, j }: η A κρατά τα προϊόντα πριν το i,
+// η B συνεχίζει από το j. null αν δεν βρεθεί κοινό κομμάτι.
+const bigrams = s => { const k = keyOf(s).replace(/[^a-zα-ω0-9]/g, ""), o = new Set(); for (let i = 0; i < k.length - 1; i++) o.add(k.slice(i, i + 2)); return o; };
+function dice(a, b) {
+  if (!a.size || !b.size) return 0;
+  let n = 0; for (const x of a) if (b.has(x)) n++;
+  return 2 * n / (a.size + b.size);
+}
+export function receiptOverlap(A, B) {
+  if (!A.length || !B.length) return null;
+  const ga = A.map(x => bigrams(x.raw)), gb = B.map(x => bigrams(x.raw));
+  const same = (a, b) => {
+    if (a < 0 || b < 0 || a >= A.length || b >= B.length) return false;
+    const d = dice(ga[a], gb[b]);
+    return d >= 0.8 || (d >= 0.45 && Math.abs(A[a].price - B[b].price) < 0.005);
+  };
+  let best = null;
+  for (let j0 = 0; j0 < Math.min(4, B.length); j0++) {
+    for (let i = 0; i < A.length; i++) {
+      if (!same(i, j0)) continue;
+      let a = i + 1, b = j0 + 1, hits = 1, miss = 0;
+      while (a < A.length && b < B.length && miss <= 3) {
+        if (same(a, b)) { a++; b++; hits++; }
+        else if (same(a + 1, b)) { a += 2; b++; hits++; miss++; }
+        else if (same(a, b + 1)) { a++; b += 2; hits++; miss++; }
+        else { a++; b++; miss++; }
+      }
+      // το κοινό κομμάτι πρέπει να φτάνει ως το τέλος της A (εκτός από 1-2 κομμένες γραμμές)
+      if (A.length - a > 2 || miss > 3) continue;
+      if (hits < 2 && A.length - i > 1) continue;
+      const score = hits * 2 - miss;
+      if (!best || score > best.score) best = { i, j: j0, score };
+    }
+  }
+  return best && { i: best.i, j: best.j, score: best.score };
 }

@@ -538,6 +538,8 @@ body.is-dragging .day input{pointer-events:none}
 .rcpt-ok .ic{width:14px;height:14px}
 .rcpt-miss{color:var(--danger)}
 .rcpt-note{margin:-6px 0 0}
+.rcpt-more{margin:4px 0 2px;gap:8px}
+.rcpt-more .muted{font-weight:400}
 #rcptSum.off{color:var(--danger)}
 #rcptBox,.rcpt-prog,.rcpt-prog .pbar{width:100%;align-self:stretch}
 .rcpt .rcpt-paste{display:grid;gap:8px}
