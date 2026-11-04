@@ -1107,7 +1107,7 @@ function bookmarklet() {
 }
 function rcptSheet(msg = "") {
   return `<h2 class="sheet-title">Εισαγωγή απόδειξης</h2>
-    <p class="sheet-text small">Φωτογράφισε την απόδειξη ίσια και με καλό φως. Η ανάγνωση γίνεται στη συσκευή σου και η φωτογραφία δεν ανεβαίνει πουθενά.</p>
+    <p class="sheet-text small">Φωτογράφισε την απόδειξη ίσια και με καλό φως. Η φωτογραφία διαβάζεται από την υπηρεσία OCR.space και δεν αποθηκεύεται. Χωρίς internet, η ανάγνωση γίνεται στη συσκευή σου.</p>
     <div id="rcptBox">
       ${msg ? `<p class="rcpt-err">${esc(msg)}</p>` : ""}
       <div class="rcpt-pick">
@@ -1253,6 +1253,40 @@ async function ocrShot(file, say, k, n) {
   if (data.lines && data.lines.length) { latin = true; await latinNames(img, data, r, (t, p) => say(t + part, at(p))); }
   return { lines: text.split("\n"), items: r.items, total: r.total };
 }
+// Ανάγνωση στον server (OCR.space μέσω /api/receipt-ocr): πολύ πιο ακριβής στα ελληνικά των αποδείξεων.
+// null αν δεν γίνεται (χωρίς σύνδεση/internet, δεν έχει ρυθμιστεί, σφάλμα): τότε διαβάζει η συσκευή.
+let cloudOcrOff = false;
+async function cloudShot(file, say, k, n) {
+  if (cloudOcrOff || !session || !navigator.onLine) return null;
+  const part = n > 1 ? ` (${k + 1} από ${n})` : "";
+  try {
+    say(`Διαβάζω την απόδειξη${part}…`, (k + 0.2) / n);
+    // η αρχική φωτογραφία, μόνο μικραίνει: το Engine 3 διαβάζει χειρότερα την ασπρόμαυρη/κομμένη του Tesseract
+    // (χάνει γραμμές). Όχι πάνω από 1400px πλάτος και ~8 MP (πολύ μεγάλες εικόνες γυρίζουν σχεδόν κενές),
+    // έως 1 MB (όριο του δωρεάν κλειδιού): μικραίνει πλάτος/ποιότητα όσο χρειάζεται
+    const img = await createImageBitmap(file);
+    const max = Math.sqrt(8e6 * img.width / img.height);
+    let blob = null;
+    for (const [W, q] of [[1400, 0.85], [1200, 0.75], [1000, 0.65]]) {
+      const k2 = Math.min(1, W / img.width, max / img.width), c = document.createElement("canvas");
+      c.width = Math.round(img.width * k2); c.height = Math.round(img.height * k2);
+      const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, c.width, c.height);
+      blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", q));
+      if (blob && blob.size < 1000 * 1024) break;
+    }
+    img.close && img.close();
+    if (!blob) return null;
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 45000);
+    const r = await fetch("/api/receipt-ocr", { method: "POST", headers: { ...authH(), "content-type": "image/jpeg" }, body: blob, signal: ctl.signal }).finally(() => clearTimeout(timer));
+    if (r.status === 501) { cloudOcrOff = true; return null; }
+    if (!r.ok) return null;
+    const { text } = await r.json();
+    if (!text || !text.trim()) return null;
+    const p = parseReceipt(text);
+    if (!p.items.length && p.total == null) return null; // δεν διαβάστηκε σωστά: διαβάζει η συσκευή
+    return { lines: text.split("\n"), items: p.items, total: p.total };
+  } catch (e) { console.warn(e); return null; }
+}
 // Ενώνει τις φωτογραφίες σε ένα κείμενο: όπου μια φωτογραφία ξαναδείχνει προϊόντα της προηγούμενης,
 // κρατάει μόνο μία φορά το κοινό κομμάτι. Τα ονόματα του αγγλικού περάσματος μεταφέρονται στο τέλος.
 function joinShots(shots) {
@@ -1387,10 +1421,24 @@ async function readReceiptFiles(files, append = false) {
       if (url) { if (await readReceiptDoc(url, say)) return; break; }
     }
     say("Ετοιμάζω την ανάγνωση…", 0.02);
-    for (let k = 0; k < files.length; k++) rcptShots.push(await ocrShot(files[k], say, k, files.length));
+    const before = rcptShots.slice(), cloud = [];
+    for (let k = 0; k < files.length; k++) {
+      const c = await cloudShot(files[k], say, k, files.length);
+      cloud.push(!!c);
+      rcptShots.push(c || await ocrShot(files[k], say, k, files.length));
+    }
+    let res = joinShots(rcptShots);
+    // Έλεγχος: αν τα προϊόντα της ανάγνωσης στον server δεν βγάζουν το σύνολο (π.χ. χάθηκε μια γραμμή),
+    // διαβάζει και η συσκευή όσες φωτογραφίες πήγαν στον server και κρατά ό,τι πλησιάζει περισσότερο το σύνολο
+    const off = x => x.r.total == null ? Infinity : Math.abs(x.r.items.reduce((a, i) => a + i.price, 0) - x.r.total);
+    if (cloud.some(Boolean) && res.r.total != null && off(res) > 0.02) {
+      const alt = before.slice();
+      for (let k = 0; k < files.length; k++) alt.push(cloud[k] ? await ocrShot(files[k], say, k, files.length) : rcptShots[before.length + k]);
+      const res2 = joinShots(alt);
+      if (off(res2) < off(res)) { res = res2; rcptShots = alt; }
+    }
     ocrProgress = null;
-    const { text, r } = joinShots(rcptShots);
-    showReceipt(text, r);
+    showReceipt(res.text, res.r);
   } catch (err) {
     ocrProgress = null;
     console.error(err);
@@ -1419,6 +1467,8 @@ function showReceipt(text, parsed) {
   const aliases = doc.aliases || {};
   const fees = r.items.filter(i => i.fee).map(i => ({ name: i.fee, price: i.price }));
   const items = r.items.filter(i => !i.fee).map(i => {
+    // το OCR διάβασε μόνο την τιμή: ο χρήστης δίνει το όνομα (δεν μαθαίνεται αντιστοίχιση, το aliasKey είναι κενό)
+    if (!i.raw) return { name: "Προϊόν χωρίς όνομα", raw: "", price: i.price, qty: i.qty, cat: guessCat("") };
     const a = aliases[aliasKey(i.raw)];
     if (a && a.t && !a.deleted) return { name: a.t, raw: i.raw, price: i.price, qty: i.qty, cat: CAT[a.c] ? a.c : guessCat(a.t) };
     const sa = sharedAlias(r.store, aliasKey(i.raw));

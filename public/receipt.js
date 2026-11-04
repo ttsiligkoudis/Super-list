@@ -279,16 +279,27 @@ export function parseReceipt(text, opts = {}) {
     const q = l.match(QTY_LINE);
     if (q && items.length) {
       const prev = items[items.length - 1];
-      const unit = /^(kg|κ)/i.test(q[2]) ? " κιλά" : "";
+      const unit = /^(kg|κ)/i.test(q[2]) || /[.,]\d{3}$/.test(q[1]) ? " κιλά" : "";
       prev.qty = unit ? `${q[1].replace(".", ",")}${unit}` : `×${q[1]}`;
+      // η έκπτωση της επόμενης γραμμής κόλλησε στη γραμμή του βάρους («0,318 x 10,78 -1,06 13,00%»)
+      const d = l.slice(q[0].length).match(/\s-(\d{1,3}[.,]\d{2})(?:\s+\d{1,2}[.,]\d{2}%?)?$/);
+      if (d && num(d[1]) < prev.price) prev.price = Math.round((prev.price - num(d[1])) * 100) / 100;
       continue;
     }
     if (SKIP.test(n) || SKIP.test(keyOf(l))) continue;
+    // μόνο «τιμή ΦΠΑ%» ανάμεσα στα προϊόντα: το OCR έχασε το όνομα. Μένει ως προϊόν χωρίς όνομα (raw ""),
+    // για να βγαίνει το σύνολο και να το ονομάσει ο χρήστης
+    const bare = items.length && l.match(/^(\d{1,3}[.,]\d{2}) (?:6|13|24)[.,]00%?$/);
+    if (bare) { items.push({ raw: "", price: num(bare[1]), qty: "", line: src, fee: "", n: 2 }); continue; }
     const m = itemLine(l);
     if (!m) continue;
     // αρνητική τιμή σε γραμμή που δεν είναι έκπτωση: το «-» είναι σκουπίδι του OCR («ΡΑ΄-1,98»)
     const price = m.price < 0 ? -m.price : m.price;
     let name = m.name.replace(/\s*\.\s*/g, ".").trim();
+    // βάρος × τιμή κιλού στην ίδια γραμμή με το όνομα («ΓΚΟΥΝΤΑ ... 0,286 x 11,70»)
+    let qty = "";
+    const wq = name.match(/\s(\d{1,2}[.,]\d{3})\s*[xXχΧ×]\s*\d{1,3}[.,]\d{2}$/);
+    if (wq) { qty = `${wq[1].replace(".", ",")} κιλά`; name = name.slice(0, wq.index).trim(); }
     if (price == null || (price <= 0 && !m.unknown) || !/[A-Za-zΑ-Ωα-ωά-ώ]{2}/.test(name)) continue;
     name = name.split(" ").map(fixWord).join(" ");
     if (m.alts) m.alts.cur = price;
@@ -304,7 +315,7 @@ export function parseReceipt(text, opts = {}) {
         continue;
       }
     }
-    items.push({ raw: name, price, qty: "", alts: m.alts, line: src, unknown: m.unknown, fee, n: m.n });
+    items.push({ raw: name, price, qty, alts: m.alts, line: src, unknown: m.unknown, fee, n: m.n });
   }
   // Απόδειξη με στήλη ΦΠΑ (τιμή + ΦΠΑ σε κάθε γραμμή): γραμμή με μόνο «24,00» / «13,00» / «6,00» είναι
   // το ΦΠΑ, η τιμή χάθηκε (π.χ. έπεσε στη γραμμή του barcode). Μένει το προϊόν, χωρίς τιμή.

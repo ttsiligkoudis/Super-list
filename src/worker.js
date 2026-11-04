@@ -17,6 +17,7 @@
 // GET  /api/data           (Authorization: Bearer <token>)
 // POST /api/data           συγχώνευση με το αποθηκευμένο, επιστρέφει το αποτέλεσμα
 // GET  /api/receipt-doc?u=<url>    η σελίδα της ψηφιακής απόδειξης από το QR (proxy, μόνο συνδεδεμένοι)
+// POST /api/receipt-ocr   (σώμα: image/jpeg) κείμενο απόδειξης από φωτογραφία μέσω OCR.space -> { text } (μόνο συνδεδεμένοι)
 // GET  /api/recipes                 όλες οι συνταγές (ευρετήριο)
 // GET  /api/recipes/<id>            μία συνταγή
 // POST /api/recipes                 νέα ή αλλαγή (μόνο ο δημιουργός)
@@ -282,6 +283,34 @@ async function receiptDoc(request) {
   return new Response(r.body, { headers: { "content-type": r.headers.get("content-type") || "text/html; charset=utf-8", "cache-control": "no-store", "x-final-url": r.url } });
 }
 
+// Ανάγνωση φωτογραφίας απόδειξης στο OCR.space (Engine 3), που διαβάζει τα ελληνικά των θερμικών αποδείξεων
+// πολύ καλύτερα από το Tesseract της συσκευής. Το κλειδί είναι στη μεταβλητή OCRSPACE_KEY (secret) του Worker·
+// χωρίς αυτό απαντά 501 και η εφαρμογή διαβάζει στη συσκευή. Το δωρεάν κλειδί δέχεται αρχεία έως 1 MB.
+async function receiptOcr(request, env) {
+  if (!env.OCRSPACE_KEY) return fail(501, "Δεν έχει ρυθμιστεί η ανάγνωση στον server.");
+  const buf = await request.arrayBuffer();
+  if (!buf.byteLength) return fail(400, "Κενή φωτογραφία.");
+  if (buf.byteLength > 1024 * 1024) return fail(413, "Πολύ μεγάλη φωτογραφία.");
+  const form = new FormData();
+  form.append("file", new Blob([buf], { type: request.headers.get("content-type") || "image/jpeg" }), "receipt.jpg");
+  form.append("language", "auto");
+  form.append("OCREngine", "3");
+  form.append("isTable", "true"); // μία γραμμή κειμένου ανά γραμμή απόδειξης (όνομα, τιμή, ΦΠΑ μαζί)
+  form.append("scale", "true");
+  let r, out;
+  try {
+    r = await fetch("https://api.ocr.space/parse/image", { method: "POST", headers: { apikey: env.OCRSPACE_KEY }, body: form });
+    out = await r.json();
+  } catch { return fail(502, "Δεν απάντησε η υπηρεσία ανάγνωσης."); }
+  const res = (out && out.ParsedResults) || [];
+  const text = res.map(x => x.ParsedText || "").join("\n").replace(/\r/g, "").replace(/\t+$/gm, "");
+  if (!r.ok || out.IsErroredOnProcessing || !text.trim()) {
+    const why = [].concat((out && (out.ErrorMessage || out.error)) || []).join(" ") || `Σφάλμα ${r.status}`;
+    return fail(502, why);
+  }
+  return json({ text });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -315,6 +344,11 @@ export default {
       const s = await auth(request, env);
       if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
       return receiptDoc(request);
+    }
+    if (pathname === "/api/receipt-ocr" && post) {
+      const s = await auth(request, env);
+      if (!s) return fail(401, "Η σύνδεση έληξε. Συνδέσου ξανά.");
+      return receiptOcr(request, env);
     }
     if (pathname === "/api/aliases") {
       const s = await auth(request, env);
