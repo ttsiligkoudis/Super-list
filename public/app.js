@@ -2,7 +2,7 @@ import { mergeDocs, emptyDoc, aheadOf, isDoc } from "./merge.js";
 import { TEMPLATES, renderSheet, daysOf, MONTHS } from "./templates.js";
 import { BUILTIN_DISHES } from "./dishes.js";
 import { BUILTIN_PRODUCTS } from "./products.js";
-import { parseReceipt, matchProduct, niceName, mergeLatin, receiptOverlap } from "./receipt.js";
+import { parseReceipt, unzipColumns, matchProduct, niceName, mergeLatin, receiptOverlap } from "./receipt.js";
 import { PRODUCT_BRANDS } from "./brands.js";
 
 /* ---------- constants ---------- */
@@ -1280,8 +1280,9 @@ async function cloudShot(file, say, k, n) {
     const r = await fetch("/api/receipt-ocr", { method: "POST", headers: { ...authH(), "content-type": "image/jpeg" }, body: blob, signal: ctl.signal }).finally(() => clearTimeout(timer));
     if (r.status === 501) { cloudOcrOff = true; return null; }
     if (!r.ok) return null;
-    const { text } = await r.json();
+    let { text } = await r.json();
     if (!text || !text.trim()) return null;
+    text = unzipColumns(text);
     const p = parseReceipt(text);
     if (!p.items.length && p.total == null) return null; // δεν διαβάστηκε σωστά: διαβάζει η συσκευή
     return { lines: text.split("\n"), items: p.items, total: p.total };

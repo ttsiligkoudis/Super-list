@@ -186,6 +186,64 @@ export function parseProviderDoc(text) {
   return { store, date, total, items, exact: true };
 }
 
+// Το OCR (π.χ. OCR.space σε στραβή φωτογραφία) έδωσε τις στήλες χωριστά: πρώτα όλα τα ονόματα, μετά όλα τα ποσά
+// («-0,67 13,00%», «2,07 13,00%», ..., «168,82 ΕΥΡΩ»). Τα ξαναενώνει: οι γραμμές ποσού με ΦΠΑ πάνε, με τη σειρά,
+// στα τελευταία ονόματα πριν το «ΣΥΝΟΛΟ» (χωρίς barcode και γραμμές βάρους) και το επόμενο ποσό στο «ΣΥΝΟΛΟ».
+export function unzipColumns(text) {
+  const L = String(text || "").replace(/\r/g, "").split("\n");
+  const isVal = l => /^-?\d{1,4}[.,]\d{2}(?:\s+\d{1,2}[.,]\d{2}\s?%)?(?:\s*(?:ΕΥΡΩ|EUR|€))?$/i.test(l.trim());
+  const withVat = l => /%$/.test(l.trim());
+  // το μπλοκ: συνεχόμενες γραμμές ποσού με ΦΠΑ (τουλάχιστον 4), μετά προαιρετικά το σύνολο
+  let a = -1, b = -1;
+  for (let i = 0; i < L.length; i++) {
+    if (!isVal(L[i]) || !withVat(L[i])) continue;
+    let j = i; while (j < L.length && isVal(L[j]) && withVat(L[j])) j++;
+    if (j - i >= 4) { a = i; b = j; break; }
+    i = j;
+  }
+  if (a < 0) return text;
+  const s = L.findIndex((l, i) => i < a && /^[ΣΖ]ΥΝΟΛΟ\s*$/i.test(keyOf(l).toUpperCase().trim()));
+  if (s < 0) return text;
+  const isName = l => /[A-Za-zΑ-Ωα-ω]{2}/.test(l) && !isVal(l) && !/\d[.,]\d{2}\s*%?\s*$/.test(l.trim()) && !new RegExp(QTY_LINE.source, "i").test(l.trim());
+  const N = [], V = [];
+  for (let i = 0; i < s; i++) if (isName(L[i])) N.push(i);
+  for (let i = a; i < b; i++) V.push(i);
+  // στοίχιση ονομάτων-ποσών: η «ΕΚΠΤΩΣΗ ...» πάει με αρνητικό ποσό. Το OCR μπορεί να έχασε κάποιο όνομα
+  // (το ποσό του μένει μόνο του) ή να έχει επιπλέον γραμμές στην αρχή (επικεφαλίδα, χωρίς κόστος)
+  const disc = i => /^[^\s]*κπτ/.test(keyOf(L[N[i]]).trim());
+  const neg = j => /^-/.test(L[V[j]].trim());
+  const n = N.length, m = V.length, INF = 1e9;
+  const f = Array.from({ length: n + 1 }, () => new Float64Array(m + 1).fill(INF)), how = Array.from({ length: n + 1 }, () => new Int8Array(m + 1));
+  f[n][m] = 0;
+  for (let i = n; i >= 0; i--) for (let j = m; j >= 0; j--) {
+    if (i === n && j === m) continue;
+    let best = INF, h = 0;
+    if (i < n && j < m) { const c = (disc(i) === neg(j) ? 0 : 5) + f[i + 1][j + 1]; if (c < best) { best = c; h = 1; } }
+    if (j < m) { const c = (i < n && disc(i) && !neg(j) ? 1 : 1.01) + f[i][j + 1]; if (c < best) { best = c; h = 2; } } // ποσό χωρίς όνομα
+    if (i < n) { const c = (j === 0 ? 0 : 1) + f[i + 1][j]; if (c < best) { best = c; h = 3; } } // όνομα χωρίς ποσό
+    f[i][j] = best; how[i][j] = h;
+  }
+  if (f[0][0] > Math.max(2, m * 0.25)) return text; // δεν μοιάζει με χωρισμένες στήλες
+  const out = L.slice(), before = new Map();
+  for (let i = 0, j = 0; i < n || j < m;) {
+    const h = how[i][j];
+    if (h === 1) { out[N[i]] = L[N[i]].trim() + " " + L[V[j]].trim(); i++; j++; }
+    else if (h === 2) {
+      // το προϊόν που χάθηκε: αν ακολουθεί η έκπτωσή του, το όνομα βγαίνει από εκεί («ΕΚΠΤΩΣΗ ΡΙΓΚΑΤΟΝΙ ...»)
+      const nm = i < n && disc(i) ? L[N[i]].trim().split(/\s+/).slice(1).join(" ") : "";
+      const at = i < n ? N[i] : s;
+      before.set(at, (before.get(at) || []).concat((nm ? nm + " " : "") + L[V[j]].trim()));
+      j++;
+    } else i++;
+  }
+  const tot = b < L.length && isVal(L[b]) && !withVat(L[b]) ? b : -1;
+  if (tot >= 0) out[s] = L[s].trim() + " " + L[tot].trim();
+  for (let i = a; i < b; i++) out[i] = null;
+  if (tot >= 0) out[tot] = null;
+  for (const [at, ls] of before) out[at] = ls.join("\n") + "\n" + out[at];
+  return out.filter(x => x !== null).join("\n");
+}
+
 export function parseReceipt(text, opts = {}) {
   const prov = parseProviderDoc(text);
   if (prov) return prov;
@@ -273,6 +331,8 @@ export function parseReceipt(text, opts = {}) {
       // με στήλη ΦΠΑ μετά («-0,72 13,00%»): το ποσό της έκπτωσης είναι το αρνητικό πριν από αυτό
       if (!off) { const neg = [...l.replace(/(?<=-[-\s]?)[ΊΙIl|](?=[\s.,\d])/g, "1").replace(/(?<=-[-\s]?)[ΟOοθΘ](?=[.,])/g, "0").matchAll(/-[-\s]?(\d{1,3})(?:[.,]\s?|\s)(\d{2})(?!\d)/g)].pop(); if (neg) off = +`${neg[1]}.${neg[2]}`; }
       if (!off) { const it = itemLine(l.replace(/[«]/g, "-")); if (it && Math.abs(it.price) < 100) off = Math.abs(it.price); }
+      // (η ίδια έκπτωση που διαβάστηκε ήδη στη γραμμή του βάρους: το OCR την έγραψε δύο φορές)
+      if (off && prev && prev.wdisc && Math.abs(prev.wdisc - off) < 0.005) { delete prev.wdisc; continue; }
       if (off && prev && off < prev.price) prev.price = Math.round((prev.price - off) * 100) / 100;
       continue;
     }
@@ -283,7 +343,7 @@ export function parseReceipt(text, opts = {}) {
       prev.qty = unit ? `${q[1].replace(".", ",")}${unit}` : `×${q[1]}`;
       // η έκπτωση της επόμενης γραμμής κόλλησε στη γραμμή του βάρους («0,318 x 10,78 -1,06 13,00%»)
       const d = l.slice(q[0].length).match(/\s-(\d{1,3}[.,]\d{2})(?:\s+\d{1,2}[.,]\d{2}%?)?$/);
-      if (d && num(d[1]) < prev.price) prev.price = Math.round((prev.price - num(d[1])) * 100) / 100;
+      if (d && num(d[1]) < prev.price) { prev.price = Math.round((prev.price - num(d[1])) * 100) / 100; prev.wdisc = num(d[1]); }
       continue;
     }
     if (SKIP.test(n) || SKIP.test(keyOf(l))) continue;
@@ -366,7 +426,7 @@ export function parseReceipt(text, opts = {}) {
       it.price = best;
     }
   }
-  items.forEach(i => { delete i.alts; delete i.base0; delete i.unknown; delete i.n; });
+  items.forEach(i => { delete i.wdisc; delete i.alts; delete i.base0; delete i.unknown; delete i.n; });
   return { store, date, total, items };
 }
 
